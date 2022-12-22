@@ -1539,7 +1539,7 @@ HTTPS为了兼顾安全与效率，同时使用了对称加密和非对称加密
 
 具体过程详细看：P43-P51
 
-https://www.bilibili.com/video/BV1yS4y1N76R?p=43&vd_source=6e6b2286ee9a603d7bdb2bc5ba80e449 
+https://www.bilibili.com/video/BV1yS4y1N76R?p=43&vd_source=6e6b2286ee9a603d7bdb2bc5ba80e449 
 
 +++
 
