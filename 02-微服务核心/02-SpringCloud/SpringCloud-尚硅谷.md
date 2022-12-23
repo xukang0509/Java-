@@ -591,7 +591,7 @@
        private PaymentService paymentService;
    
        @PostMapping(value = "/payment/create")
-       public CommonResult<Integer> create(Payment payment) {
+       public CommonResult<Integer> create(@RequestBody Payment payment) {
            int result = paymentService.create(payment);
            log.info("插入结果：" + result);
            if (result > 0) {
@@ -744,7 +744,7 @@
 
    ```yaml
    server:
-     port: 81
+     port: 80
    ```
 
 4. 主启动类
@@ -914,13 +914,13 @@
 
 ##### 3.2.3 测试
 
-> `http://localhost:81/consumer/payment/get/32`
+> `http://localhost:80/consumer/payment/get/32`
 >
-> `http://localhost:81/consumer/payment/create?serial=atguigu003`
+> `http://localhost:80/consumer/payment/create?serial=atguigu003`
 
-![image-20221222224432494](SpringCloud-尚硅谷.assets/image-20221222224432494.png)
+![image-20221223101509765](SpringCloud-尚硅谷.assets/image-20221223101509765.png)
 
-![image-20221222224437448](SpringCloud-尚硅谷.assets/image-20221222224437448.png)
+![image-20221223101511771](SpringCloud-尚硅谷.assets/image-20221223101511771.png)
 
 
 
@@ -1032,209 +1032,1317 @@ Eureka采用了CS的设计架构，Eureka Server作为服务注册功能的服�
 
 #### 2.1 Eureka Server端服务注册中心
 
+IDEA生成eurekaServer端服务注册中心：类似物业公司
 
+1. 建Maven子工程：cloud-eureka-server7001
 
+2. 改POM
 
+   ```xml
+   <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+       <parent>
+           <artifactId>sh-cloud</artifactId>
+           <groupId>com.shanhai.springcloud</groupId>
+           <version>1.0-SNAPSHOT</version>
+       </parent>
+       <modelVersion>4.0.0</modelVersion>
+   
+       <artifactId>cloud-eureka-server7001</artifactId>
+   
+       <dependencies>
+           <!--eureka-server-->
+           <dependency>
+               <groupId>org.springframework.cloud</groupId>
+               <artifactId>spring-cloud-starter-netflix-eureka-server</artifactId>
+           </dependency>
+           <!-- 引入自己定义的api通用包，可以使用Payment支付Entity -->
+           <dependency>
+               <groupId>com.shanhai.springcloud</groupId>
+               <artifactId>cloud-api-commons</artifactId>
+               <version>1.0-SNAPSHOT</version>
+           </dependency>
+           <!--boot web actuator-->
+           <dependency>
+               <groupId>org.springframework.boot</groupId>
+               <artifactId>spring-boot-starter-web</artifactId>
+           </dependency>
+           <dependency>
+               <groupId>org.springframework.boot</groupId>
+               <artifactId>spring-boot-starter-actuator</artifactId>
+           </dependency>
+           <!--一般通用配置-->
+           <dependency>
+               <groupId>org.springframework.boot</groupId>
+               <artifactId>spring-boot-devtools</artifactId>
+               <scope>runtime</scope>
+               <optional>true</optional>
+           </dependency>
+           <dependency>
+               <groupId>org.projectlombok</groupId>
+               <artifactId>lombok</artifactId>
+           </dependency>
+           <dependency>
+               <groupId>org.springframework.boot</groupId>
+               <artifactId>spring-boot-starter-test</artifactId>
+               <scope>test</scope>
+           </dependency>
+           <dependency>
+               <groupId>junit</groupId>
+               <artifactId>junit</artifactId>
+           </dependency>
+       </dependencies>
+   </project>
+   ```
 
+3. 写YML：application.yml
 
+   ```yaml
+   server:
+     port: 7001
+   
+   eureka:
+     instance:
+       hostname: localhost # eureka服务端的实例名称
+     client:
+       # false表示不向注册中心注册自己。
+       register-with-eureka: false
+       # false表示自己端就是注册中心，我的职责就是维护服务实例，并不需要去检索服务
+       fetch-registry: false
+       service-url:
+         #设置与Eureka Server交互的地址查询服务和注册服务都需要依赖这个地址。
+         defaultZone: http://${eureka.instance.hostname}:${server.port}/eureka/
+   ```
 
+4. 主启动类
 
+   注：加`@EnableEurekaServer`注解
 
+   ```java
+   package com.shanhai.springcloud;
+   
+   import org.springframework.boot.SpringApplication;
+   import org.springframework.boot.autoconfigure.SpringBootApplication;
+   import org.springframework.cloud.netflix.eureka.server.EnableEurekaServer;
+   
+   /**
+    * @description:
+    * @author: xu
+    * @date: 2022/12/23 9:28
+    */
+   @EnableEurekaServer
+   @SpringBootApplication
+   public class EurekaMain7001 {
+       public static void main(String[] args) {
+           SpringApplication.run(EurekaMain7001.class, args);
+       }
+   }
+   ```
 
+5. 测试
 
+   访问：`http://localhost:7001/`
 
+   No application available 没有服务被发现 O(∩_∩)O
 
+   因为没有注册服务进来当然不可能有服务被发现
 
-
-
+   ![image-20221223093829079](SpringCloud-尚硅谷.assets/image-20221223093829079.png)
 
 
 
 #### 2.2 Eureka Client端
 
+> Eureka Client端将 cloud-provider-payment8001 注册进Eureka Server成为服务提供者provider
+>
+> 类似尚硅谷学校对外提供授课服务
+
+*修改cloud-provider-payment8001模块*：
+
+1. 改POM
+
+   添加依赖
+
+   ```xml
+   <!--eureka-client-->
+   <dependency>
+       <groupId>org.springframework.cloud</groupId>
+       <artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
+   </dependency>
+   ```
+
+2. 修改YML文件：application.yml
+
+   ```yml
+   server:
+     port: 8001
+   
+   spring:
+     application:
+       name: cloud-payment-service
+     datasource:
+       type: com.alibaba.druid.pool.DruidDataSource
+       driver-class-name: com.mysql.jdbc.Driver
+       url: jdbc:mysql://192.168.88.100:3306/cloud_test?useUnicode=true&characterEncoding=utf-8&useSSL=false
+       username: root
+       password: 123456
+   
+   mybatis:
+     mapperLocations: classpath:mapper/*.xml
+     type-aliases-package: com.shanhai.springcloud.entities
+   
+   eureka:
+     client:
+       # 表示是否将自己注册进EurekaServer默认为true。
+       register-with-eureka: true
+       # 是否从EurekaServer抓取已有的注册信息，默认为true。
+       # 单节点无所谓，集群必须设置为true才能配合ribbon使用负载均衡
+       fetchRegistry: true
+       service-url:
+         defaultZone: http://localhost:7001/eureka
+   ```
+
+3. 主启动类：加`@EnableEurekaClient`注解
+
+   ```java
+   @EnableEurekaClient
+   @SpringBootApplication
+   public class PaymentMain8001 {
+       public static void main(String[] args) {
+           SpringApplication.run(PaymentMain8001.class, args);
+       }
+   }
+   ```
 
+4. 测试
 
+   **先要启动EurekaServer**，访问`http://localhost:7001/`：
 
+   ![image-20221223095727126](SpringCloud-尚硅谷.assets/image-20221223095727126.png)
 
+   微服务注册名配置说明
 
+   ![image-20221223095757417](SpringCloud-尚硅谷.assets/image-20221223095757417.png)
 
 
 
+> Eureka Client端 cloud-consumer-order80 将注册进Eureka Server成为服务消费者consumer
+>
+> 类似来尚硅谷上课消费的各位同学
 
+*修改cloud-consumer-order80模块*：
 
+1. 改POM
 
+   添加依赖
 
+   ```xml
+   <!--eureka-client-->
+   <dependency>
+       <groupId>org.springframework.cloud</groupId>
+       <artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
+   </dependency>
+   ```
 
+2. 修改YML文件：application.yml
 
+   ```yaml
+   server:
+     port: 80
+   
+   spring:
+     application:
+       name: cloud-order-service
+   
+   eureka:
+     client:
+       # 表示是否将自己注册进EurekaServer默认为true。
+       register-with-eureka: true
+       # 是否从EurekaServer抓取已有的注册信息，默认为true。
+       # 单节点无所谓，集群必须设置为true才能配合ribbon使用负载均衡
+       fetchRegistry: true
+       service-url:
+         defaultZone: http://localhost:7001/eureka
+   ```
 
+3. 主启动类：加`@EnableEurekaClient`注解
 
+   ```java
+   @EnableEurekaClient
+   @SpringBootApplication
+   public class MainApp80 {
+       public static void main(String[] args) {
+           SpringApplication.run(MainApp80.class,args);
+       }
+   }
+   ```
 
+4. 测试
 
+   **先要启动EurekaServer，7001服务**；**再要启动服务提供者provider，8001服务**；
 
+   访问`http://localhost:7001/`：
+
+   ![image-20221223100818522](SpringCloud-尚硅谷.assets/image-20221223100818522.png)
+
 
+
+### 3 集群Eureka构建步骤
 
+#### 3.1 Eureka集群原理说明
 
+![image-20221223114508506](SpringCloud-尚硅谷.assets/image-20221223114508506.png)
 
+1. 先启动Eureka注册中心
+2. 启动服务提供者payment支付服务
+3. 支付服务启动后会把自身信息(比如服务地址以别名方式)注册进Eureka
+4. 消费者order服务在需要调用接口时，使用服务别名去注册中心获取实际的RPC远程调用地址
+5. 消费者获得调用地址后，底层实际是利用HttpClient技术实现远程调用
+6. 消费者获得服务地址后会缓存在本地JVM内存中，默认每间隔30s更新一次服务调用地址
 
+> 问题：微服务RPC远程服务调用最核心的是什么？
 
+高可用，试想你的注册中心只有一个only one，它出故障了那就呵呵了，会导致整个为服务环境不可用
 
+解决办法：搭建Eureka注册中心集群 ，实现负载均衡+故障容错
 
 
 
+#### 3.2 Eureka Server集群环境构建步骤
 
+参考*cloud-eureka-server7001*：
 
+1. 新建module：cloud-eureka-server7002
 
+2. 改POM：和cloud-eureka-server7001模块的POM文件一模一样
 
+3. 修改映射配置
 
+   找到C:\Windows\System32\drivers\etc路径下的hosts文件
 
+   修改映射配置添加进hosts文件
 
+   ```
+   127.0.0.1  eureka7001.com
+   127.0.0.1  eureka7002.com
+   ```
 
+4. 写YML
 
+   cloud-eureka-server7001
+
+   ```yaml
+   server:
+     port: 7001
+   
+   eureka:
+     instance:
+       hostname: eureka7001.com #eureka服务端的实例名称
+     client:
+       register-with-eureka: false     #false表示不向注册中心注册自己。
+       fetch-registry: false     #false表示自己端就是注册中心，我的职责就是维护服务实例，并不需要去检索服务
+       service-url:
+         # defaultZone: http://${eureka.instance.hostname}:${server.port}/eureka/
+         defaultZone: http://eureka7002.com:7002/eureka/
+   ```
+
+   cloud-eureka-server7002
+
+   ```yaml
+   server:
+     port: 7002
+   
+   eureka:
+     instance:
+       hostname: eureka7002.com #eureka服务端的实例名称
+     client:
+       register-with-eureka: false     #false表示不向注册中心注册自己。
+       fetch-registry: false     #false表示自己端就是注册中心，我的职责就是维护服务实例，并不需要去检索服务
+       service-url:
+         defaultZone: http://eureka7001.com:7001/eureka/
+   ```
+
+5. 主启动类
+
+   ```java
+   package com.shanhai.springcloud;
+   
+   import org.springframework.boot.SpringApplication;
+   import org.springframework.boot.autoconfigure.SpringBootApplication;
+   import org.springframework.cloud.netflix.eureka.server.EnableEurekaServer;
+   
+   /**
+    * @description:
+    * @author: xu
+    * @date: 2022/12/23 11:11
+    */
+   @EnableEurekaServer
+   @SpringBootApplication
+   public class EurekaMain7002 {
+       public static void main(String[] args) {
+           SpringApplication.run(EurekaMain7002.class, args);
+       }
+   }
+   ```
 
+6. 测试：相互注册，相互守望
 
+   分别访问：`http://eureka7001.com:7001/`和`http://eureka7002.com:7002/`。
 
+   ![image-20221223120056588](SpringCloud-尚硅谷.assets/image-20221223120056588.png)
 
+   ![image-20221223120058325](SpringCloud-尚硅谷.assets/image-20221223120058325.png)
 
 
 
+#### 3.3 将微服务发布到Eureka集群配置中
 
+> 将支付服务8001微服务发布到上面2台Eureka集群配置中
+
+> 将订单服务80微服务发布到上面2台Eureka集群配置中
+
+只需要分别修改两个服务的YML文件即可：
+
+- cloud-provider-payment8001
+
+  ```yaml
+  server:
+    port: 8001
+  
+  spring:
+    application:
+      name: cloud-payment-service
+    datasource:
+      type: com.alibaba.druid.pool.DruidDataSource            # 当前数据源操作类型
+      driver-class-name: com.mysql.jdbc.Driver              # mysql驱动包 com.mysql.jdbc.Driver
+      url: jdbc:mysql://192.168.88.100:3306/cloud_test?useUnicode=true&characterEncoding=utf-8&useSSL=false
+      username: root
+      password: 123456
+  
+  mybatis:
+    mapperLocations: classpath:mapper/*.xml
+    type-aliases-package: com.shanhai.springcloud.entities    # 所有Entity别名类所在包
+  
+  eureka:
+    client:
+      # 表示是否将自己注册进EurekaServer默认为true。
+      register-with-eureka: true
+      # 是否从EurekaServer抓取已有的注册信息，默认为true。
+      # 单节点无所谓，集群必须设置为true才能配合ribbon使用负载均衡
+      fetchRegistry: true
+      service-url:
+        # defaultZone: http://localhost:7001/eureka
+        # 集群版
+        defaultZone: http://eureka7001.com:7001/eureka,http://eureka7002.com:7002/eureka
+  ```
+
+- cloud-consumer-order80
+
+  ```yaml
+  server:
+    port: 80
+  
+  spring:
+    application:
+      name: cloud-order-service
+  
+  eureka:
+    client:
+      # 表示是否将自己注册进EurekaServer默认为true。
+      register-with-eureka: true
+      # 是否从EurekaServer抓取已有的注册信息，默认为true。
+      # 单节点无所谓，集群必须设置为true才能配合ribbon使用负载均衡
+      fetchRegistry: true
+      service-url:
+        # defaultZone: http://localhost:7001/eureka
+        # 集群版
+        defaultZone: http://eureka7001.com:7001/eureka,http://eureka7002.com:7002/eureka
+  ```
+
+> 测试
+
+*先要启动EurekaServer，7001/7002服务*；*再要启动服务提供者provider，8001服务*；*再要启动消费者，80服务*。
+
+分别访问：`http://eureka7001.com:7001/`和`http://eureka7002.com:7002/`。
+
+![image-20221223121056890](SpringCloud-尚硅谷.assets/image-20221223121056890.png)
+
+![image-20221223121059075](SpringCloud-尚硅谷.assets/image-20221223121059075.png)
+
+`http://localhost:80/consumer/payment/get/32`：OK
+
+![image-20221223121223780](SpringCloud-尚硅谷.assets/image-20221223121223780.png)
+
+
+
+#### 3.4 支付服务提供者集群环境构建
+
+参考cloud-provider-payment8001
+
+1. 新建module：cloud-provider-payment8002
+
+2. 改POM：依赖环境和cloud-provider-payment8001模块的POM文件一模一样
+
+3. 写YML：和cloud-provider-payment8001的YML文件基本一致(只修改服务端口即可)
+
+   ```yaml
+   server:
+     port: 8002
+   
+   spring:
+     application:
+       name: cloud-payment-service
+     datasource:
+       type: com.alibaba.druid.pool.DruidDataSource            # 当前数据源操作类型
+       driver-class-name: com.mysql.jdbc.Driver              # mysql驱动包 com.mysql.jdbc.Driver
+       url: jdbc:mysql://192.168.88.100:3306/cloud_test?useUnicode=true&characterEncoding=utf-8&useSSL=false
+       username: root
+       password: 123456
+   
+   mybatis:
+     mapperLocations: classpath:mapper/*.xml
+     type-aliases-package: com.shanhai.springcloud.entities    # 所有Entity别名类所在包
+   
+   eureka:
+     client:
+       # 表示是否将自己注册进EurekaServer默认为true。
+       register-with-eureka: true
+       # 是否从EurekaServer抓取已有的注册信息，默认为true。
+       # 单节点无所谓，集群必须设置为true才能配合ribbon使用负载均衡
+       fetchRegistry: true
+       service-url:
+         # defaultZone: http://localhost:7001/eureka
+         # 集群版
+         defaultZone: http://eureka7001.com:7001/eureka,http://eureka7002.com:7002/eureka
+   ```
+
+4. 主启动类
+
+   ```java
+   package com.shanhai.springcloud;
+   
+   import org.springframework.boot.SpringApplication;
+   import org.springframework.boot.autoconfigure.SpringBootApplication;
+   import org.springframework.cloud.netflix.eureka.EnableEurekaClient;
+   
+   /**
+    * @description:
+    * @author: xu
+    * @date: 2022/12/23 12:19
+    */
+   @SpringBootApplication
+   @EnableEurekaClient
+   public class PaymentMain8002 {
+       public static void main(String[] args) {
+           SpringApplication.run(PaymentMain8002.class, args);
+       }
+   }
+   ```
+
+5. 业务类：直接从8001粘
+
+6. 修改8001/8002的Controller
+
+   cloud-provider-payment8001
+
+   ```java
+   @RestController
+   @Slf4j
+   public class PaymentController {
+       @Resource
+       private PaymentService paymentService;
+   
+       @Value("${server.port}")
+       private String serverPort;
+   
+       @PostMapping(value = "/payment/create")
+       public CommonResult<Integer> create(@RequestBody Payment payment) {
+           int result = paymentService.create(payment);
+           log.info("插入结果：" + result);
+           if (result > 0) {
+               return new CommonResult(200, "插入数据库成功，serverPort" + serverPort, result);
+           } else {
+               return new CommonResult(444, "插入数据库失败", null);
+           }
+       }
+   
+       @GetMapping(value = "/payment/get/{id}")
+       public CommonResult<Payment> getPaymentById(@PathVariable("id") Long id) {
+           Payment payment = paymentService.getPaymentById(id);
+           log.info("结果：" + payment);
+           if (payment != null) {
+               return new CommonResult(200, "查询成功，serverPort" + serverPort, payment);
+           } else {
+               return new CommonResult(444, "没有对应记录，查询失败，查询ID：" + id, null);
+           }
+       }
+   }
+   ```
+
+   cloud-provider-payment8002
+
+   ```java
+   @RestController
+   @Slf4j
+   public class PaymentController {
+       @Resource
+       private PaymentService paymentService;
+   
+       @Value("${server.port}")
+       private String serverPort;
+   
+       @PostMapping(value = "/payment/create")
+       public CommonResult<Integer> create(@RequestBody Payment payment) {
+           int result = paymentService.create(payment);
+           log.info("插入结果：" + result);
+           if (result > 0) {
+               return new CommonResult(200, "插入数据库成功，serverPort" + serverPort, result);
+           } else {
+               return new CommonResult(444, "插入数据库失败", null);
+           }
+       }
+   
+       @GetMapping(value = "/payment/get/{id}")
+       public CommonResult<Payment> getPaymentById(@PathVariable("id") Long id) {
+           Payment payment = paymentService.getPaymentById(id);
+           log.info("结果：" + payment);
+           if (payment != null) {
+               return new CommonResult(200, "查询成功，serverPort" + serverPort, payment);
+           } else {
+               return new CommonResult(444, "没有对应记录，查询失败，查询ID：" + id, null);
+           }
+       }
+   }
+   ```
+
+7. 测试
+
+   分别访问：`http://eureka7001.com:7001/`和`http://eureka7002.com:7002/`。
+
+   ![image-20221223123041297](SpringCloud-尚硅谷.assets/image-20221223123041297.png)
+
+   ![image-20221223123043708](SpringCloud-尚硅谷.assets/image-20221223123043708.png)
+
+
+
+#### 3.5 负载均衡
+
+> BUG：80订单服务访问地址不能写死
+
+cloud-consumer-order80：订单模块的Controller类
+
+```java
+package com.shanhai.springcloud.controller;
+
+import com.shanhai.springcloud.entities.CommonResult;
+import com.shanhai.springcloud.entities.Payment;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.client.RestTemplate;
+
+import javax.annotation.Resource;
+
+/**
+ * @description:
+ * @author: xu
+ * @date: 2022/12/22 22:04
+ */
+@RestController
+@Slf4j
+public class OrderController {
+    //private static final String PAYMENT_URL = "http://localhost:8001";
+    private static final String PAYMENT_URL = "http://CLOUD-PAYMENT-SERVICE";
+
+    @Resource
+    private RestTemplate restTemplate;
+
+    @GetMapping("/consumer/payment/create")
+    public CommonResult<Integer> create(Payment payment) {
+        log.info("OrderController.create");
+        return restTemplate.postForObject(PAYMENT_URL +  "/payment/create", payment, CommonResult.class);
+    }
+
+    @GetMapping("/consumer/payment/get/{id}")
+    public CommonResult<Payment> getPaymentById(@PathVariable("id") Long id) {
+        log.info("OrderController.getPaymentById");
+        return restTemplate.getForObject(PAYMENT_URL +  "/payment/get/"+ id, CommonResult.class);
+    }
+}
+```
+
+
+
+> 使用`@LoadBalanced`注解赋予`RestTemplate`负载均衡的能力
+
+cloud-consumer-order80：订单模块的config配置类：ApplicationContextConfig
+
+```java
+package com.shanhai.springcloud.config;
+
+import org.springframework.cloud.client.loadbalancer.LoadBalanced;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.client.RestTemplate;
+
+/**
+ * @description:
+ * @author: xu
+ * @date: 2022/12/22 22:08
+ */
+@Configuration
+public class ApplicationContextConfig {
+    @Bean
+    @LoadBalanced
+    public RestTemplate getRestTemplate() {
+        return new RestTemplate();
+    }
+}
+```
+
+
+
+> 测试
+
+*先要启动EurekaServer，7001/7002服务*；*再要启动服务提供者provider，8001/8002服务*；*再要启动消费者，80服务*。
+
+多次访问：`http://localhost/consumer/payment/get/31`
+
+结果：负载均衡效果达到，8001/8002端口交替出现
+
+Ribbon和Eureka整合后Consumer可以直接调用服务而不用再关心地址和端口号，且该服务还有负载功能了。O(∩_∩)O
+
+![image-20221223124500406](SpringCloud-尚硅谷.assets/image-20221223124500406.png)
+
+![image-20221223124138937](SpringCloud-尚硅谷.assets/image-20221223124138937.png)
+
+
+
+### 4 actuator微服务信息完善
+
+> 主机名称:服务名称修改
+
+当前问题：含有主机名称
+
+![image-20221223125643948](SpringCloud-尚硅谷.assets/image-20221223125643948.png)
+
+分别修改`cloud-provider-payment8001`和修改`cloud-provider-payment8002`的YML文件。
+
+修改部分：
+
+```yaml
+eureka:
+  client:
+    # 表示是否将自己注册进EurekaServer默认为true。
+    register-with-eureka: true
+    # 是否从EurekaServer抓取已有的注册信息，默认为true。
+    # 单节点无所谓，集群必须设置为true才能配合ribbon使用负载均衡
+    fetchRegistry: true
+    service-url:
+      # defaultZone: http://localhost:7001/eureka
+      # 集群版
+      defaultZone: http://eureka7001.com:7001/eureka,http://eureka7002.com:7002/eureka
+  instance:
+    instance-id: payment8001 # payment8002
+```
+
+修改之后：
+
+![image-20221223125954392](SpringCloud-尚硅谷.assets/image-20221223125954392.png)
+
+
+
+> 访问信息有IP信息提示
+
+当前问题：没有IP提示
+
+![image-20221223130225029](SpringCloud-尚硅谷.assets/image-20221223130225029.png)
+
+分别修改`cloud-provider-payment8001`和修改`cloud-provider-payment8002`的YML文件。
+
+修改部分：
+
+```yaml
+eureka:
+  client:
+    # 表示是否将自己注册进EurekaServer默认为true。
+    register-with-eureka: true
+    # 是否从EurekaServer抓取已有的注册信息，默认为true。
+    # 单节点无所谓，集群必须设置为true才能配合ribbon使用负载均衡
+    fetchRegistry: true
+    service-url:
+      defaultZone: http://eureka7001.com:7001/eureka,http://eureka7002.com:7002/eureka
+  instance:
+    instance-id: payment8001 # payment8002
+    prefer-ip-address: true
+```
+
+修改之后：
+
+![image-20221223130521184](SpringCloud-尚硅谷.assets/image-20221223130521184.png)
+
+
+
+### 5 服务发现Discovery
+
+对于注册进eureka里面的微服务，可以通过服务发现来获得该服务的信息
+
+修改`cloud-provider-payment8001`的`Controller`：
+
+```java
+package com.shanhai.springcloud.controller;
+
+import com.shanhai.springcloud.entities.CommonResult;
+import com.shanhai.springcloud.entities.Payment;
+import com.shanhai.springcloud.service.PaymentService;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cloud.client.ServiceInstance;
+import org.springframework.cloud.client.discovery.DiscoveryClient;
+import org.springframework.web.bind.annotation.*;
+
+import javax.annotation.Resource;
+import java.util.List;
+
+/**
+ * @description:
+ * @author: xu
+ * @date: 2022/12/22 20:30
+ */
+@RestController
+@Slf4j
+public class PaymentController {
+    @Resource
+    private PaymentService paymentService;
+
+    @Value("${server.port}")
+    private String serverPort;
+
+    @Resource
+    private DiscoveryClient discoveryClient;
+
+    @PostMapping(value = "/payment/create")
+    public CommonResult<Integer> create(@RequestBody Payment payment) {
+        int result = paymentService.create(payment);
+        log.info("插入结果：" + result);
+        if (result > 0) {
+            return new CommonResult(200, "插入数据库成功，serverPort" + serverPort, result);
+        } else {
+            return new CommonResult(444, "插入数据库失败", null);
+        }
+    }
+
+    @GetMapping(value = "/payment/get/{id}")
+    public CommonResult<Payment> getPaymentById(@PathVariable("id") Long id) {
+        Payment payment = paymentService.getPaymentById(id);
+        log.info("结果：" + payment);
+        if (payment != null) {
+            return new CommonResult(200, "查询成功，serverPort" + serverPort, payment);
+        } else {
+            return new CommonResult(444, "没有对应记录，查询失败，查询ID：" + id, null);
+        }
+    }
 
+    @GetMapping(value = "/payment/discovery")
+    public Object discovery() {
+        List<String> services = discoveryClient.getServices();
+        for (String service : services) {
+            log.info("service：" + service);
+        }
 
+        List<ServiceInstance> instances = discoveryClient.getInstances("CLOUD-PAYMENT-SERVICE");
+        for (ServiceInstance instance : instances) {
+            log.info(instance.getServiceId() + "\t" + instance.getHost() + "\t" +
+                    instance.getPort() + "\t" + instance.getUri());
+        }
+        return discoveryClient;
+    }
+}
+```
 
+8001主启动类：添加`@EnableDiscoveryClient`注解
 
+```java
+package com.shanhai.springcloud;
 
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
+import org.springframework.cloud.netflix.eureka.EnableEurekaClient;
 
+/**
+ * @description: 主启动类
+ * @author: xu
+ * @date: 2022/12/22 20:02
+ */
+@EnableDiscoveryClient
+@EnableEurekaClient
+@SpringBootApplication
+public class PaymentMain8001 {
+    public static void main(String[] args) {
+        SpringApplication.run(PaymentMain8001.class, args);
+    }
+}
+```
 
+测试：
 
+先要启动EurekaServer，再启动8001主启动类
 
+访问`http://localhost:8001/payment/discovery`。
 
+![image-20221223134139784](SpringCloud-尚硅谷.assets/image-20221223134139784.png)
 
+![image-20221223134223541](SpringCloud-尚硅谷.assets/image-20221223134223541.png)
 
+> 修改`cloud-provider-payment8002`的`Controller`和其主启动类的操作和以上操作一样。
 
 
 
+### 6 Eureka自我保护
 
+#### 6.1 概述
 
+> 故障现象
 
+概述：保护模式主要用于一组客户端和Eureka Server之间存在网络分区场景下的保护。一旦进入保护模式，Eureka Server将会尝试保护其服务注册表中的信息，不再删除服务注册表中的数据，也就是不会注销任何微服务。
 
+如果在Eureka Server的首页看到以下这段提示，则说明Eureka进入了保护模式：
 
+`EMERGENCY! EUREKA MAY BE INCORRECTLY CLAIMING INSTANCES ARE UP WHEN THEY'RE NOT. 
+RENEWALS ARE LESSER THAN THRESHOLD AND HENCE THE INSTANCES ARE NOT BEING EXPIRED JUST TO BE SAFE `
 
+![image-20221223134655179](SpringCloud-尚硅谷.assets/image-20221223134655179.png)
 
 
 
+> 导致原因
 
+*为什么会产生Eureka自我保护机制*？
 
+为了防止EurekaClient可以正常运行，但是 与 EurekaServer网络不通情况下，EurekaServer不会立刻将EurekaClient服务剔除。
 
+*什么是自我保护模式*？
 
+默认情况下，如果EurekaServer在一定时间内没有接收到某个微服务实例的心跳，EurekaServer将会注销该实例（默认90秒）。但是当网络分区故障发生(延时、卡顿、拥挤)时，微服务与EurekaServer之间无法正常通信，以上行为可能变得非常危险了——因为微服务本身其实是健康的，**此时本不应该注销这个微服务**。Eureka通过“自我保护模式”来解决这个问题——当EurekaServer节点在短时间内丢失过多客户端时（可能发生了网络分区故障），那么这个节点就会进入自我保护模式。
 
+![image-20221223135734608](SpringCloud-尚硅谷.assets/image-20221223135734608.png)
 
+**在自我保护模式中，Eureka Server会保护服务注册表中的信息，不再注销任何服务实例**。
 
+它的设计哲学就是宁可保留错误的服务注册信息，也不盲目注销任何可能健康的服务实例。*一句话讲解：好死不如赖活着*。
 
+综上，自我保护模式是一种应对网络异常的安全保护措施。它的架构哲学是宁可同时保留所有微服务（健康的微服务和不健康的微服务都会保留）也不盲目注销任何健康的微服务。使用自我保护模式，可以让Eureka集群更加的健壮、稳定。
 
 
 
+一句话：某时刻某一个微服务不可用了，Eureka不会立刻清理，依旧会对该微服务的信息进行保存。
 
+属于CAP里面的AP分支
 
 
 
+#### 6.2 怎么禁止自我保护
 
+> 注册中心eureakeServer端7001
+>
+> 注册中心eureakeServer端7002
 
+出厂默认，自我保护机制是开启的：`eureka.server.enable-self-preservation=true`
 
+使用`eureka.server.enable-self-preservation=false`可以禁用自我保护模式
 
+修改 7001 和 7002 两个模块的YML文件即可
 
+```yaml
+server:
+  port: 7001 #7002
 
+eureka:
+  instance:
+    hostname: eureka7001.com #eureka服务端的实例名称
+  client:
+    register-with-eureka: false     #false表示不向注册中心注册自己。
+    fetch-registry: false     #false表示自己端就是注册中心，我的职责就是维护服务实例，并不需要去检索服务
+    service-url:
+      # defaultZone: http://${eureka.instance.hostname}:${server.port}/eureka/
+      defaultZone: http://eureka7002.com:7002/eureka/ # http://eureka7001.com:7001/eureka/
+  server:
+    #关闭自我保护机制，保证不可用服务被及时踢除
+    enable-self-preservation: false
+    eviction-interval-timer-in-ms: 2000
+```
 
+关闭效果：
 
+![image-20221223140749586](SpringCloud-尚硅谷.assets/image-20221223140749586.png)
 
 
 
+> 生产者客户端eureakeClient端8001
+>
+> 生产者客户端eureakeClient端8002
 
+默认配置：
 
+- eureka.instance.lease-renewal-interval-in-seconds=30 (单位为秒(默认是30秒))
+- eureka.instance.lease-expiration-duration-in-seconds=90 (单位为秒(默认是90秒))
 
+修改 8001 和 8002 两个模块的YML文件即可
 
+```yaml
+eureka:
+  client:
+    # 表示是否将自己注册进EurekaServer默认为true。
+    register-with-eureka: true
+    # 是否从EurekaServer抓取已有的注册信息，默认为true。
+    # 单节点无所谓，集群必须设置为true才能配合ribbon使用负载均衡
+    fetchRegistry: true
+    service-url:
+      # defaultZone: http://localhost:7001/eureka
+      # 集群版
+      defaultZone: http://eureka7001.com:7001/eureka,http://eureka7002.com:7002/eureka
+  instance:
+    instance-id: payment8001
+    prefer-ip-address: true
+    # Eureka客户端向服务端发送心跳的时间间隔，单位为秒(默认是30秒)
+    lease-renewal-interval-in-seconds: 1
+    # Eureka服务端在收到最后一次心跳后等待时间上限，单位为秒(默认是90秒)，超时将剔除服务
+    lease-expiration-duration-in-seconds: 2
+```
 
 
 
+> 测试
+
+7001、7002和8001、8002都配置完成
+
+先启动7001、7002再启动8001、8002
+
+![image-20221223141809909](SpringCloud-尚硅谷.assets/image-20221223141809909.png)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+先关闭8001：马上被删除了
+
+![image-20221223141947567](SpringCloud-尚硅谷.assets/image-20221223141947567.png)
+
++++
+
+## 五、Zookeeper服务注册与发现
+
+> 问题：Eureka停止更新了你怎么办？
+>
+> https://github.com/Netflix/eureka/wiki
+
+![image-20221223142706086](SpringCloud-尚硅谷.assets/image-20221223142706086.png)
+
+答案之一：*SpringCloud整合Zookeeper代替Eureka*。
+
+
+
+下面就就进行SpringCloud整合Zookeeper的操作：
+
+### 1 注册中心Zookeeper
+
+- zookeeper是一个分布式协调工具，可以实现注册中心功能
+- 关闭Linux服务器防火墙后启动zookeeper服务器
+- zookeeper服务器取代Eureka服务器，zk作为服务注册中心
+
+
+
+### 2 服务提供者
+
+1. 新建Maven子模块：cloud-provider-payment8004
+
+2. POM
+
+   ```xml
+   <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+       <parent>
+           <artifactId>sh-cloud</artifactId>
+           <groupId>com.shanhai.springcloud</groupId>
+           <version>1.0-SNAPSHOT</version>
+       </parent>
+       <modelVersion>4.0.0</modelVersion>
+   
+       <artifactId>cloud-provider-payment8004</artifactId>
+       <dependencies>
+           <!-- SpringBoot整合Web组件 -->
+           <dependency>
+               <groupId>org.springframework.boot</groupId>
+               <artifactId>spring-boot-starter-web</artifactId>
+           </dependency>
+           <dependency><!-- 引入自己定义的api通用包，可以使用Payment支付Entity -->
+               <groupId>com.shanhai.springcloud</groupId>
+               <artifactId>cloud-api-commons</artifactId>
+               <version>${project.version}</version>
+           </dependency>
+           <!-- SpringBoot整合zookeeper客户端 -->
+           <dependency>
+               <groupId>org.springframework.cloud</groupId>
+               <artifactId>spring-cloud-starter-zookeeper-discovery</artifactId>
+           </dependency>
+           <dependency>
+               <groupId>org.springframework.boot</groupId>
+               <artifactId>spring-boot-devtools</artifactId>
+               <scope>runtime</scope>
+               <optional>true</optional>
+           </dependency>
+           <dependency>
+               <groupId>org.projectlombok</groupId>
+               <artifactId>lombok</artifactId>
+               <optional>true</optional>
+           </dependency>
+           <dependency>
+               <groupId>org.springframework.boot</groupId>
+               <artifactId>spring-boot-starter-test</artifactId>
+               <scope>test</scope>
+           </dependency>
+       </dependencies>
+   </project>
+   ```
+
+3. YML：application.yml
+
+   ```yaml
+   #8004表示注册到zookeeper服务器的支付服务提供者端口号
+   server:
+     port: 8004
+   #服务别名----注册zookeeper到注册中心名称
+   spring:
+     application:
+       name: cloud-provider-zk-payment
+     cloud:
+       zookeeper:
+         connect-string: 192.168.88.100:2181
+   ```
+
+4. 主启动类：添加`@EnableDiscoveryClient`注解
+
+   ```java
+   package com.shanhai.springcloud;
+   
+   import org.springframework.boot.SpringApplication;
+   import org.springframework.boot.autoconfigure.SpringBootApplication;
+   import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
+   
+   /**
+    * @description:
+    * @author: xu
+    * @date: 2022/12/23 15:05
+    */
+   //该注解用于向使用consul或者zookeeper作为注册中心时注册服务
+   @EnableDiscoveryClient
+   @SpringBootApplication
+   public class PaymentMain8004 {
+       public static void main(String[] args) {
+           SpringApplication.run(PaymentMain8004.class, args);
+       }
+   }
+   ```
+
+5. Controller
+
+   ```java
+   package com.shanhai.springcloud.controller;
+   
+   import org.springframework.beans.factory.annotation.Value;
+   import org.springframework.web.bind.annotation.RestController;
+   
+   import java.util.UUID;
+   
+   /**
+    * @description:
+    * @author: xu
+    * @date: 2022/12/23 15:07
+    */
+   @RestController
+   public class PaymentController {
+       @Value("${server.port}")
+       private String serverPort;
+   
+       public String paymentZk(){
+           return "SpringCloud With Zookeeper : " + serverPort + "\t"
+                   + UUID.randomUUID().toString();
+       }
+   }
+   ```
+
+6. 启动8004注册进zookeeper
+
+   启动后可能出现的问题：
+
+   ![image-20221223151949080](SpringCloud-尚硅谷.assets/image-20221223151949080.png)
+
+   why？
+
+   ![image-20221223152025104](SpringCloud-尚硅谷.assets/image-20221223152025104.png)
+
+   ![image-20221223152035396](SpringCloud-尚硅谷.assets/image-20221223152035396.png)
+
+   解决zookeeper版本jar包冲突问题
+
+   ```xml
+   <!-- SpringBoot整合zookeeper客户端 -->
+   <dependency>
+   	<groupId>org.springframework.cloud</groupId>
+   	<artifactId>spring-cloud-starter-zookeeper-discovery</artifactId>
+   	<!--先排除自带的zookeeper3.5.3-->
+   	<exclusions>
+   		<exclusion>
+       		<groupId>org.apache.zookeeper</groupId>
+       		<artifactId>zookeeper</artifactId>
+   		</exclusion>
+   	</exclusions>
+   </dependency>
+   <!--添加zookeeper3.4.9版本-->
+   <dependency>
+       <groupId>org.apache.zookeeper</groupId>
+       <artifactId>zookeeper</artifactId>
+       <version>3.4.9</version>
+   </dependency>
+   ```
+
+7. 验证测试：`http://localhost:8004/payment/zk`
+
+   ![image-20221223152724385](SpringCloud-尚硅谷.assets/image-20221223152724385.png)
+
+   ![image-20221223152935575](SpringCloud-尚硅谷.assets/image-20221223152935575.png)
+
+8. 验证测试2：获得json串后用在线工具查看试试
+
+   ![image-20221223153312003](SpringCloud-尚硅谷.assets/image-20221223153312003.png)
+
+   ![image-20221223153642436](SpringCloud-尚硅谷.assets/image-20221223153642436.png)
+
+9. 思考：服务节点是临时节点还是持久节点？
+
+   答：临时节点
+
+   ![image-20221223154010454](SpringCloud-尚硅谷.assets/image-20221223154010454.png)
+
+
+
+### 3 服务消费者
+
+1. 新建Maven子模块：cloud-consumerzk-order80
+
+2. POM
+
+   ```xml
+   <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+       <parent>
+           <artifactId>sh-cloud</artifactId>
+           <groupId>com.shanhai.springcloud</groupId>
+           <version>1.0-SNAPSHOT</version>
+       </parent>
+       <modelVersion>4.0.0</modelVersion>
+   
+       <artifactId>cloud-consumerzk-order80</artifactId>
+       <dependencies>
+           <!-- SpringBoot整合Web组件 -->
+           <dependency>
+               <groupId>org.springframework.boot</groupId>
+               <artifactId>spring-boot-starter-web</artifactId>
+           </dependency>
+           <!-- SpringBoot整合zookeeper客户端 -->
+           <dependency>
+               <groupId>org.springframework.cloud</groupId>
+               <artifactId>spring-cloud-starter-zookeeper-discovery</artifactId>
+           </dependency>
+           <dependency>
+               <groupId>org.springframework.boot</groupId>
+               <artifactId>spring-boot-devtools</artifactId>
+               <scope>runtime</scope>
+               <optional>true</optional>
+           </dependency>
+           <dependency>
+               <groupId>org.projectlombok</groupId>
+               <artifactId>lombok</artifactId>
+               <optional>true</optional>
+           </dependency>
+           <dependency>
+               <groupId>org.springframework.boot</groupId>
+               <artifactId>spring-boot-starter-test</artifactId>
+               <scope>test</scope>
+           </dependency>
+       </dependencies>
+   </project>
+   ```
+
+3. YML：application.yml
+
+   ```yaml
+   server:
+     port: 80
+   
+   spring:
+     application:
+       name: cloud-consumer-zk-order
+     cloud:
+       #注册到zookeeper地址
+       zookeeper:
+         connect-string: 192.168.88.100:2181
+   ```
+
+4. 主启动类
+
+   ```java
+   @SpringBootApplication
+   public class OrderZK80 {
+       public static void main(String[] args) {
+           SpringApplication.run(OrderZK80.class, args);
+       }
+   }
+   ```
+
+5. 业务类
+
+   配置Bean：RestTemplate
+
+   ```java
+   @Configuration
+   public class ApplicationContextConfig {
+       @Bean
+       @LoadBalanced
+       public RestTemplate getRestTemplate() {
+           return new RestTemplate();
+       }
+   }
+   ```
+
+   Controller
+
+   ```java
+   @RestController
+   public class OrderZKController {
+       public static final String INVOKE_URL = "http://cloud-provider-zk-payment";
+   
+       @Resource
+       private RestTemplate restTemplate;
+   
+       @RequestMapping(value = "/consumer/payment/zk")
+       public String paymentInfo() {
+           String result = restTemplate.getForObject(INVOKE_URL+"/payment/zk", String.class);
+           System.out.println("消费者调用支付服务(zookeeper)--->result:" + result);
+           return result;
+       }
+   }
+   ```
+
+6. 验证测试
+
+   ![image-20221223155756135](SpringCloud-尚硅谷.assets/image-20221223155756135.png)
+
+   访问`http://localhost/consumer/payment/zk`：
+
+   ![image-20221223155903173](SpringCloud-尚硅谷.assets/image-20221223155903173.png)
+
++++
+
+## 六、Consul服务注册与发现
 
 
 
