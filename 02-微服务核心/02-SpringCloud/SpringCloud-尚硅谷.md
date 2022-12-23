@@ -2344,95 +2344,378 @@ eureka:
 
 ## 六、Consul服务注册与发现
 
+### 1 Consul简介
 
+官网：https://www.consul.io/intro/index.html
 
 
 
+#### 1.1 Consul是什么？
 
+![image-20221224004756366](SpringCloud-尚硅谷.assets/image-20221224004756366.png)
 
+Consul 是一套开源的分布式服务发现和配置管理系统，由 HashiCorp 公司**用 Go 语言开发**。
 
+提供了微服务系统中的*服务治理*、*配置中心*、*控制总线*等功能。这些功能中的每一个都可以根据需要单独使用，也可以一起使用以构建全方位的服务网格，总之Consul提供了一种完整的服务网格解决方案。
 
+它具有很多优点。包括：基于 raft 协议，比较简洁；支持健康检查，同时支持 HTTP 和 DNS 协议，支持跨数据中心的 WAN 集群，提供图形界面跨平台，支持Linux、Mac、Windows。
 
 
 
+#### 1.2 Consul能干嘛？
 
+Spring Cloud Consul 具有如下特性：
 
+![image-20221224005126542](SpringCloud-尚硅谷.assets/image-20221224005126542.png)
 
+1. 服务发现：提供HTTP和DNS两种发现方式。
+2. 健康监测：支持多种方式，HTTP、TCP、Docker、Shell脚本定制化监控
+3. KV存储：Key、Value的存储方式
+4. 多数据中心：Consul支持多数据中心
+5. 可视化Web界面
 
 
 
+#### 1.3 下载与使用
 
+去哪下：https://www.consul.io/downloads.html
 
+怎么玩：https://www.springcloud.cc/spring-cloud-consul.html
 
 
 
+### 2 安装并运行Consul
 
+官网安装说明：https://learn.hashicorp.com/consul/getting-started/install.html
 
+下载完成后只有一个consul.exe文件，硬盘路径下cmd运行，查看版本号信息
 
+![image-20221224005956809](SpringCloud-尚硅谷.assets/image-20221224005956809.png)
 
+![image-20221224010113005](SpringCloud-尚硅谷.assets/image-20221224010113005.png)
 
+使用开发模式启动：`consul agent -dev`
 
+通过以下地址可以访问Consul的首页：`http://localhost:8500`
 
+结果页面：
 
+![image-20221224010508045](SpringCloud-尚硅谷.assets/image-20221224010508045.png)
 
 
 
+### 3 服务提供者
 
+1. 新建Module支付服务provider8006：`cloud-providerconsul-payment8006`
 
+2. POM
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+   ```xml
+   <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+       <parent>
+           <artifactId>sh-cloud</artifactId>
+           <groupId>com.shanhai.springcloud</groupId>
+           <version>1.0-SNAPSHOT</version>
+       </parent>
+       <modelVersion>4.0.0</modelVersion>
+   
+       <artifactId>cloud-providerconsul-payment8006</artifactId>
+   
+       <dependencies>
+           <!--SpringCloud consul-server -->
+           <dependency>
+               <groupId>org.springframework.cloud</groupId>
+               <artifactId>spring-cloud-starter-consul-discovery</artifactId>
+           </dependency>
+           <!-- SpringBoot整合Web组件 -->
+           <dependency>
+               <groupId>org.springframework.boot</groupId>
+               <artifactId>spring-boot-starter-web</artifactId>
+           </dependency>
+           <dependency>
+               <groupId>org.springframework.boot</groupId>
+               <artifactId>spring-boot-starter-actuator</artifactId>
+           </dependency>
+           <!--日常通用jar包配置-->
+           <dependency>
+               <groupId>org.springframework.boot</groupId>
+               <artifactId>spring-boot-devtools</artifactId>
+               <scope>runtime</scope>
+               <optional>true</optional>
+           </dependency>
+           <dependency>
+               <groupId>org.projectlombok</groupId>
+               <artifactId>lombok</artifactId>
+               <optional>true</optional>
+           </dependency>
+           <dependency>
+               <groupId>org.springframework.boot</groupId>
+               <artifactId>spring-boot-starter-test</artifactId>
+               <scope>test</scope>
+           </dependency>
+       </dependencies>
+   </project>
+   ```
+
+3. YML：application.yml
+
+   ```yaml
+   ###consul服务端口号
+   server:
+     port: 8006
+   
+   spring:
+     application:
+       name: consul-provider-payment
+     ####consul注册中心地址
+     cloud:
+       consul:
+         host: localhost
+         port: 8500
+         discovery:
+           #hostname: 127.0.0.1
+           service-name: ${spring.application.name}
+   ```
+
+4. 主启动类
+
+   ```java
+   /**
+    * @description:
+    * @author: xu
+    * @date: 2022/12/24 1:20
+    */
+   @SpringBootApplication
+   @EnableDiscoveryClient
+   public class PaymentMain8006 {
+       public static void main(String[] args) {
+           SpringApplication.run(PaymentMain8006.class, args);
+       }
+   }
+   ```
+
+5. 业务类Controller
+
+   ```java
+   /**
+    * @description:
+    * @author: xu
+    * @date: 2022/12/24 1:22
+    */
+   @RestController
+   public class PaymentController {
+       @Value("${server.port}")
+       private String serverPort;
+   
+       @GetMapping("/payment/consul")
+       public String paymentInfo() {
+           return "SpringCloud With Consul：" + serverPort + "\t"
+                   + UUID.randomUUID().toString();
+       }
+   }
+   ```
+
+6. 验证测试
+
+   `http://localhost:8500`：
+
+   ![image-20221224013101291](SpringCloud-尚硅谷.assets/image-20221224013101291.png)
+
+   `http://localhost:8006/payment/consul`：
+
+   ![image-20221224013134195](SpringCloud-尚硅谷.assets/image-20221224013134195.png)
+
+
+
+### 4 服务消费者
+
+1. 新建Module消费服务order80：`cloud-consumerconsul-order80`
+
+2. POM
+
+   ```xml
+   <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+            xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+       <parent>
+           <artifactId>sh-cloud</artifactId>
+           <groupId>com.shanhai.springcloud</groupId>
+           <version>1.0-SNAPSHOT</version>
+       </parent>
+       <modelVersion>4.0.0</modelVersion>
+   
+       <artifactId>cloud-consumerconsul-order80</artifactId>
+   
+       <dependencies>
+           <!--SpringCloud consul-server -->
+           <dependency>
+               <groupId>org.springframework.cloud</groupId>
+               <artifactId>spring-cloud-starter-consul-discovery</artifactId>
+           </dependency>
+           <!-- SpringBoot整合Web组件 -->
+           <dependency>
+               <groupId>org.springframework.boot</groupId>
+               <artifactId>spring-boot-starter-web</artifactId>
+           </dependency>
+           <dependency>
+               <groupId>org.springframework.boot</groupId>
+               <artifactId>spring-boot-starter-actuator</artifactId>
+           </dependency>
+           <!--日常通用jar包配置-->
+           <dependency>
+               <groupId>org.springframework.boot</groupId>
+               <artifactId>spring-boot-devtools</artifactId>
+               <scope>runtime</scope>
+               <optional>true</optional>
+           </dependency>
+           <dependency>
+               <groupId>org.projectlombok</groupId>
+               <artifactId>lombok</artifactId>
+               <optional>true</optional>
+           </dependency>
+           <dependency>
+               <groupId>org.springframework.boot</groupId>
+               <artifactId>spring-boot-starter-test</artifactId>
+               <scope>test</scope>
+           </dependency>
+       </dependencies>
+   </project>
+   ```
+
+3. YML：application.yml
+
+   ```yml
+   ###consul服务端口号
+   server:
+     port: 80
+   
+   spring:
+     application:
+       name: cloud-consumer-order
+     ####consul注册中心地址
+     cloud:
+       consul:
+         host: localhost
+         port: 8500
+         discovery:
+           #hostname: 127.0.0.1
+           service-name: ${spring.application.name}
+   ```
+
+4. 主启动类
+
+   ```java
+   //该注解用于向使用consul或者zookeeper作为注册中心时注册服务
+   @EnableDiscoveryClient
+   @SpringBootApplication
+   public class OrderConsulMain80 {
+       public static void main(String[] args) {
+           SpringApplication.run(OrderConsulMain80.class, args);
+       }
+   }
+   ```
+
+5. 配置Config
+
+   ```java
+   @Configuration
+   public class ApplicationContextConfig {
+       @Bean
+       @LoadBalanced
+       public RestTemplate getRestTemplate() {
+           return new RestTemplate();
+       }
+   }
+   ```
+
+6. Controller
+
+   ```java
+   @RestController
+   public class OrderConsulController {
+       // consul-provider-payment
+       public static final String INVOKE_URL = "http://consul-provider-payment";
+   
+       @Autowired
+       private RestTemplate restTemplate;
+   
+       @GetMapping(value = "/consumer/payment/consul")
+       public String paymentInfo() {
+           String result = restTemplate.getForObject(INVOKE_URL + "/payment/consul", String.class);
+           System.out.println("消费者调用支付服务(consul)--->result:" + result);
+           return result;
+       }
+   }
+   ```
+
+7. 验证测试
+
+   `http://localhost:8500`：
+
+   ![image-20221224015124665](SpringCloud-尚硅谷.assets/image-20221224015124665.png)
+
+   `http://localhost/consumer/payment/consul`：
+
+   ![image-20221224015225329](SpringCloud-尚硅谷.assets/image-20221224015225329.png)
+
+
+
+### 5 三个注册中心异同点
+
+| **组件名** | **语言** | **CAP** | **服务健康检查** | **对外暴露接口** | **SpringCloud集成** |
+| ---------- | -------- | ------- | ---------------- | ---------------- | ------------------- |
+| Eureka     | Java     | AP      | 可配支持         | HTTP             | 已集成              |
+| Consul     | Go       | CP      | 支持             | HTTP/DNS         | 已集成              |
+| Zookeeper  | Java     | CP      | 支持             | 客户端           | 已集成              |
+
+
+
+> CAP：
+
+- C：Consistency（强一致性）
+- A：Availability（可用性）
+- P：Partition tolerance（分区容错性）
+- CAP理论关注粒度是数据，而不是整体系统设计的策略
+
+> 经典CAP图：
+
+*最多只能同时较好的满足两个*。
+
+CAP理论的核心是：*一个分布式系统不可能同时很好的满足一致性，可用性和分区容错性这三个需求*。
+
+因此，根据 CAP 原理将 NoSQL 数据库分成了**满足 CA 原则**、**满足 CP 原则**和**满足 AP 原则**三大类：
+
+- CA --- 单点集群，满足一致性，可用性的系统，通常在可扩展性上不太强大。
+- CP --- 满足一致性，分区容错性的系统，通常性能不是特别高。
+- AP --- 满足可用性，分区容错性的系统，通常可能对一致性要求低一些。
+
+![image-20221224020110783](SpringCloud-尚硅谷.assets/image-20221224020110783.png)
+
+> AP(Eureka)
+
+AP架构
+
+当网络分区出现后，为了保证可用性，系统B*可以返回旧值*，保证系统的可用性。
+
+结论：**违背了一致性C的要求，只满足可用性和分区容错，即AP**。
+
+![image-20221224021319927](SpringCloud-尚硅谷.assets/image-20221224021319927.png)
+
+
+
+> CP(Zookeeper/Consul)
+
+CP架构
+
+当网络分区出现后，为了保证一致性，就必须拒接请求，否则无法保证一致性。
+
+结论：**违背了可用性A的要求，只满足一致性和分区容错，即CP**。
+
+![image-20221224021851046](SpringCloud-尚硅谷.assets/image-20221224021851046.png)
+
++++
+
+## 七、Ribbon负载均衡服务调用
 
 
 
