@@ -2717,185 +2717,1128 @@ CP架构
 
 ## 七、Ribbon负载均衡服务调用
 
+### 1 概述
 
+> Ribbon是什么？
 
+Spring Cloud Ribbon是基于Netflix Ribbon实现的一套**客户端负载均衡的工具**。
 
+简单的说，Ribbon是Netflix发布的开源项目，主要功能是提供**客户端的软件负载均衡算法和服务调用**。Ribbon客户端组件提供一系列完善的配置项如连接超时，重试等。简单的说，就是在配置文件中列出Load Balancer（简称LB）后面所有的机器，Ribbon会自动的帮助你基于某种规则（如简单轮询，随机连接等）去连接这些机器。我们很容易使用Ribbon实现自定义的负载均衡算法。
 
 
 
+官网资料：https://github.com/Netflix/ribbon/wiki/Getting-Started
 
+Ribbon目前也进入维护模式，
 
+![image-20221224160829403](SpringCloud-尚硅谷.assets/image-20221224160829403.png)
 
+未来替换方案：Spring Cloud loadbalancer
 
 
 
+> Ribbon能干嘛？
 
+- **LB（负载均衡）**
 
+  1. *LB负载均衡(Load Balance)是什么？*
 
+     简单的说就是将用户的请求平摊的分配到多个服务上，从而达到系统的HA（高可用）。
 
+     常见的负载均衡有软件Nginx，LVS，硬件 F5等。
 
+  2. *Ribbon本地负载均衡客户端 VS Nginx服务端负载均衡区别？*
 
+     Nginx是服务器负载均衡，客户端所有请求都会交给nginx，然后由nginx实现转发请求。即负载均衡是由服务端实现的。
 
+     Ribbon本地负载均衡，在调用微服务接口时候，会在注册中心上获取注册信息服务列表之后缓存到JVM本地，从而在本地实现RPC远程服务调用技术。
 
+- **集中式LB**
 
+  即在服务的消费方和提供方之间使用独立的LB设施(可以是硬件，如F5, 也可以是软件，如nginx), 由该设施负责把访问请求通过某种策略转发至服务的提供方；
 
+- **进程内LB**
 
+  将LB逻辑集成到消费方，消费方从服务注册中心获知有哪些地址可用，然后自己再从这些地址中选择出一个合适的服务器。
 
+  **Ribbon就属于进程内LB**，它只是一个类库，**集成于消费方进程**，消费方通过它来获取到服务提供方的地址。
 
 
 
+前面我们讲解过了80通过轮询负载访问8001/8002
 
+一句话：负载均衡+RestTemplate调用
 
 
 
+### 2 Ribbon负载均衡演示
 
+> 架构说明
 
+![image-20221224161845926](SpringCloud-尚硅谷.assets/image-20221224161845926.png)
 
+Ribbon在工作时分成两步：
 
+1. 第一步先选择 EurekaServer，它优先选择在同一个区域内负载较少的server。
+2. 第二步再根据用户指定的策略，在从server取到的服务注册列表中选择一个地址。其中Ribbon提供了多种策略：比如轮询、随机和根据响应时间加权。
 
+总结：Ribbon其实就是一个软负载均衡的客户端组件，他可以和其他所需请求的客户端结合使用，和eureka结合只是其中的一个实例。
 
 
 
+> POM
 
+之前写样例时候没有引入spring-cloud-starter-ribbon也可以使用ribbon
 
+```xml
+<dependency>
+    <groupId>org.springframework.cloud</groupId>
+    <artifactId>spring-cloud-starter-netflix-ribbon</artifactId>
+</dependency>
+```
 
+猜测spring-cloud-starter-netflix-eureka-client自带了spring-cloud-starter-ribbon引用
 
+证明如下：可以看到 spring-cloud-starter-netflix-eureka-client 确实引入了Ribbon
 
+![image-20221224162227985](SpringCloud-尚硅谷.assets/image-20221224162227985.png)
 
 
 
+> RestTemplate的使用
 
+官网：https://docs.spring.io/spring-framework/docs/5.2.2.RELEASE/javadoc-api/org/springframework/web/client/RestTemplate.html
 
+![image-20221224162414032](SpringCloud-尚硅谷.assets/image-20221224162414032.png)
 
+1. getForObject方法/getForEntity方法
 
+   **返回对象为响应体中数据转化成的对象，基本上可以理解为Json**
 
+   ![image-20221224162609871](SpringCloud-尚硅谷.assets/image-20221224162609871.png)
 
+   **返回对象为ResponseEntity对象，包含了响应中的一些重要信息，比如响应头、响应状态码、响应体等**
 
+   ![image-20221224162639660](SpringCloud-尚硅谷.assets/image-20221224162639660.png)
 
+2. postForObject/postForEntity
 
+   ![image-20221224162814999](SpringCloud-尚硅谷.assets/image-20221224162814999.png)
 
+3. GET请求方法
 
+   ```java
+   <T> T getForObject(String url, Class<T> responseType, Object... uriVariables);
+    
+   <T> T getForObject(String url, Class<T> responseType, Map<String, ?> uriVariables);
+    
+   <T> T getForObject(URI url, Class<T> responseType);
+    
+   <T> ResponseEntity<T> getForEntity(String url, Class<T> responseType, Object... uriVariables);
+    
+   <T> ResponseEntity<T> getForEntity(String url, Class<T> responseType, Map<String, ?> uriVariables);
+    
+   <T> ResponseEntity<T> getForEntity(URI var1, Class<T> responseType);
+   
+   ```
 
+4. POST请求方法
 
+   ```java
+   <T> T postForObject(String url, @Nullable Object request, Class<T> responseType, Object... uriVariables);
+    
+   <T> T postForObject(String url, @Nullable Object request, Class<T> responseType, Map<String, ?> uriVariables);
+    
+   <T> T postForObject(URI url, @Nullable Object request, Class<T> responseType);
+    
+   <T> ResponseEntity<T> postForEntity(String url, @Nullable Object request, Class<T> responseType, Object... uriVariables);
+    
+   <T> ResponseEntity<T> postForEntity(String url, @Nullable Object request, Class<T> responseType, Map<String, ?> uriVariables);
+    
+   <T> ResponseEntity<T> postForEntity(URI url, @Nullable Object request, Class<T> responseType);
+   ```
 
 
 
+### 3 Ribbon核心组件IRule
 
+> IRule：根据特定算法中从服务列表中选取一个要访问的服务
 
+![image-20221224164222858](SpringCloud-尚硅谷.assets/image-20221224164222858.png)
 
+1. com.netflix.loadbalancer.RoundRobinRule：轮询
+2. com.netflix.loadbalancer.RandomRule：随机
+3. com.netflix.loadbalancer.RetryRule：先按照RoundRobinRule的策略获取服务，如果获取服务失败则在指定时间内会进行重试，获取可用的服务
+4. WeightedResponseTimeRule：对RoundRobinRule的扩展，响应速度越快的实例选择权重越大，越容易被选择
+5. BestAvailableRule：会先过滤掉由于多次访问故障而处于断路器跳闸状态的服务，然后选择一个并发量最小的服务
+6. AvailabilityFilteringRule：先过滤掉故障实例，再选择并发较小的实例
+7. ZoneAvoidanceRule：默认规则，复合判断server所在区域的性能和server的可用性选择服务器
 
 
 
+> 如何替换负载均衡算法？
 
+1. 修改cloud-consumer-order80
 
+2. 注意配置细节
 
+   *官方文档明确给出了警告*：<font color="gree">这个自定义配置类不能放在@ComponentScan所扫描的当前包下以及子包下，否则我们自定义的这个配置类就会被所有的Ribbon客户端所共享，达不到特殊化定制的目的了。</font>
 
+3. 新建package：com.shanhai.myrule
 
+4. 上面包下新建MySelfRule规则类
 
+   ![image-20221224165117675](SpringCloud-尚硅谷.assets/image-20221224165117675.png)
 
+5. 主启动类添加`@RibbonClient`
 
+   ```java
+   package com.shanhai.springcloud;
+   
+   import com.shanhai.myrule.MySelfRule;
+   import org.springframework.boot.SpringApplication;
+   import org.springframework.boot.autoconfigure.SpringBootApplication;
+   import org.springframework.cloud.netflix.eureka.EnableEurekaClient;
+   import org.springframework.cloud.netflix.ribbon.RibbonClient;
+   
+   // 在启动该微服务的时候就能去加载我们的自定义Ribbon配置类，从而使配置生效，形如：
+   @RibbonClient(name = "CLOUD-PAYMENT-SERVICE", configuration = MySelfRule.class)
+   @EnableEurekaClient
+   @SpringBootApplication
+   public class MainApp80 {
+       public static void main(String[] args) {
+           SpringApplication.run(MainApp80.class,args);
+       }
+   }
+   ```
 
+6. 测试：http://localhost/consumer/payment/get/31
 
+   结果，随机访问8001/8002端口
 
 
 
+### 4 Ribbon负载均衡算法
 
+> 原理
 
+**负载均衡算法**：*rest接口第几次请求数 % 服务器集群总数量 = 实际调用服务器位置下标，每次服务重启动后rest接口计数从1开始*。
 
+`List<ServiceInstance> instances = discoveryClient.getInstances("CLOUD-PAYMENT-SERVICE");`
 
+如：
 
+`List [0] instances = 127.0.0.1:8002`
 
+`List [1] instances = 127.0.0.1:8001`
 
+8001+ 8002 组合成为集群，它们共计2台机器，集群总数为2，按照轮询算法原理：
 
+- 当总请求数为1时：1 % 2 =1 对应下标位置为1，则获得服务地址为127.0.0.1:8001
+- 当总请求数位2时：2 % 2 =0 对应下标位置为0，则获得服务地址为127.0.0.1:8002
+- 当总请求数位3时：3 % 2 =1 对应下标位置为1，则获得服务地址为127.0.0.1:8001
+- 当总请求数位4时：4 % 2 =0 对应下标位置为0，则获得服务地址为127.0.0.1:8002
+- 如此类推......
+
+
+
+> 手写：自己试着写一个本地负载均衡器试试
+
+- 7001/7002集群启动
+
+- 8001/8002微服务改造，controller
+
+  分别添加一个相同的方法即可
+
+  ```java
+  @Value("${server.port}") // 8001 / 8002
+  private String serverPort;
+  
+  @GetMapping(value = "/payment/lb")
+  public String getPaymentLB() {
+      return serverPort;
+  }
+  ```
+
+  8001/8002集群启动
+
+- 80订单微服务改造
+
+  1. ApplicationContextConfig去掉注解`@LoadBalanced`
 
+     ```java
+     @Configuration
+     public class ApplicationContextConfig {
+         //@LoadBalanced
+         @Bean
+         public RestTemplate getRestTemplate() {
+             return new RestTemplate();
+         }
+     }
+     ```
 
+  2. LoadBalancer接口
 
+     ```java
+     package com.shanhai.springcloud.lb;
+     
+     import org.springframework.cloud.client.ServiceInstance;
+     import java.util.List;
+     
+     public interface LoadBalancer {
+         ServiceInstance instances(List<ServiceInstance> serviceInstances);
+     }
+     ```
 
+  3. MyLB实现LoadBalancer接口
 
+     ```java
+     package com.shanhai.springcloud.lb;
+     
+     import org.springframework.cloud.client.ServiceInstance;
+     import org.springframework.stereotype.Component;
+     
+     import java.util.List;
+     import java.util.concurrent.atomic.AtomicInteger;
+     
+     @Component
+     public class MyLB implements LoadBalancer {
+         private AtomicInteger atomicInteger = new AtomicInteger(0);
+     
+         public final int getAtomicInteger() {
+             int current;
+             int next;
+             do {
+                 current = this.atomicInteger.get();
+                 next = current >= Integer.MAX_VALUE ? 0 : current + 1;
+             } while (!this.atomicInteger.compareAndSet(current, next));
+             System.out.println("第几次访问次数next = " + next);
+             return next;
+         }
+     
+         @Override
+         public ServiceInstance instances(List<ServiceInstance> serviceInstances) {
+             int index = getAtomicInteger() % serviceInstances.size();
+             return serviceInstances.get(index);
+         }
+     }
+     ```
 
+  4. OrderController
 
+     ```java
+     // org.springframework.web.client.RestTemplate;
+     @Resource
+     private RestTemplate restTemplate;
+     
+     @Resource
+     private LoadBalancer loadBalancer;
+     
+     // org.springframework.cloud.client.discovery.DiscoveryClient;
+     @Resource
+     private DiscoveryClient discoveryClient;
+     
+     @GetMapping("/consumer/payment/lb")
+     public String getPaymentLB() {
+         List<ServiceInstance> instances = discoveryClient.getInstances("CLOUD-PAYMENT-SERVICE");
+         if (instances != null && instances.size() <= 0) {
+             return null;
+         }
+         ServiceInstance serviceInstance = loadBalancer.instances(instances);
+         URI uri = serviceInstance.getUri();
+         return restTemplate.getForObject(uri + "/payment/lb", String.class);
+     }
+     ```
 
+- 测试：`http://localhost/consumer/payment/lb`
 
+  结果：轮询访问8001/8002
 
++++
 
+## 八、OpenFeign服务接口调用
 
+### 1 概述
 
+#### 1.1 OpenFeign是什么？
 
+官网解释：https://cloud.spring.io/spring-cloud-static/Hoxton.SR1/reference/htmlsingle/#spring-cloud-openfeign
 
+Feign是一个声明式WebService客户端。使用Feign能让编写Web Service客户端更加简单。
 
+它的使用方法是*定义一个服务接口然后在上面添加注解*。Feign也支持可拔插式的编码器和解码器。Spring Cloud对Feign进行了封装，使其支持了Spring MVC标准注解和HttpMessageConverters。Feign可以与Eureka和Ribbon组合使用以支持负载均衡。
 
+![image-20221224182459281](SpringCloud-尚硅谷.assets/image-20221224182459281.png)
 
 
 
+Feign是一个声明式的Web服务客户端，让编写Web服务客户端变得非常容易，**只需创建一个接口并在接口上添加注解即可**。
 
+GitHub：https://github.com/spring-cloud/spring-cloud-openfeign
 
 
 
+#### 1.2 OpenFeign能干嘛？
 
+- *Feign能干什么*：
 
+  Feign旨在使编写Java Http客户端变得更容易。
 
+  前面在使用Ribbon+RestTemplate时，利用RestTemplate对http请求的封装处理，形成了一套模版化的调用方法。但是在实际开发中，由于对服务依赖的调用可能不止一处，**往往一个接口会被多处调用，所以通常都会针对每个微服务自行封装一些客户端类来包装这些依赖服务的调用**。所以，Feign在此基础上做了进一步封装，由他来帮助我们定义和实现依赖服务接口的定义。**在Feign的实现下，我们只需创建一个接口并使用注解的方式来配置它(以前是Dao接口上面标注Mapper注解，现在是一个微服务接口上面标注一个Feign注解即可)**，即可完成对服务提供方的接口绑定，简化了使用Spring cloud Ribbon时，自动封装服务调用客户端的开发量。
 
+- *Feign集成了Ribbon*：
 
+  利用Ribbon维护了Payment的服务列表信息，并且通过轮询实现了客户端的负载均衡。而与Ribbon不同的是，**通过feign只需要定义服务绑定接口且以声明式的方法**，优雅而简单的实现了服务调用
 
 
 
+#### 1.3 Feign和OpenFeign两者区别
 
+![image-20221224183434006](SpringCloud-尚硅谷.assets/image-20221224183434006.png)
 
 
 
+### 2 OpenFeign使用步骤
 
+**接口+注解：微服务调用接口+@FeignClient**
 
+1. 新建Maven子模块：cloud-consumer-feign-order80
+
+   Feign在消费端使用
+
+2. POM
+
+   ```xml
+   <dependencies>
+       <!--openfeign-->
+       <dependency>
+           <groupId>org.springframework.cloud</groupId>
+           <artifactId>spring-cloud-starter-openfeign</artifactId>
+       </dependency>
+       <!--eureka client-->
+       <dependency>
+           <groupId>org.springframework.cloud</groupId>
+           <artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
+       </dependency>
+       <!-- 引入自己定义的api通用包，可以使用Payment支付Entity -->
+       <dependency>
+           <groupId>com.shanhai.springcloud</groupId>
+           <artifactId>cloud-api-commons</artifactId>
+           <version>${project.version}</version>
+       </dependency>
+       <!--web-->
+       <dependency>
+           <groupId>org.springframework.boot</groupId>
+           <artifactId>spring-boot-starter-web</artifactId>
+       </dependency>
+       <dependency>
+           <groupId>org.springframework.boot</groupId>
+           <artifactId>spring-boot-starter-actuator</artifactId>
+       </dependency>
+       <!--一般基础通用配置-->
+       <dependency>
+           <groupId>org.springframework.boot</groupId>
+           <artifactId>spring-boot-devtools</artifactId>
+           <scope>runtime</scope>
+           <optional>true</optional>
+       </dependency>
+       <dependency>
+           <groupId>org.projectlombok</groupId>
+           <artifactId>lombok</artifactId>
+           <optional>true</optional>
+       </dependency>
+       <dependency>
+           <groupId>org.springframework.boot</groupId>
+           <artifactId>spring-boot-starter-test</artifactId>
+           <scope>test</scope>
+       </dependency>
+   </dependencies>
+   ```
 
+3. YML
 
+   ```yaml
+   server:
+     port: 80
+   
+   eureka:
+     client:
+       register-with-eureka: false
+       service-url:
+         defaultZone: http://eureka7001.com:7001/eureka/,http://eureka7002.com:7002/eureka/
+   ```
 
+4. 主启动类：加注解`@EnableFeignClients`
 
+   ```java
+   package com.shanhai.springcloud;
+   
+   import org.springframework.boot.SpringApplication;
+   import org.springframework.boot.autoconfigure.SpringBootApplication;
+   import org.springframework.cloud.openfeign.EnableFeignClients;
+   
+   @SpringBootApplication
+   @EnableFeignClients
+   public class OrderFeignMain80 {
+       public static void main(String[] args) {
+           SpringApplication.run(OrderFeignMain80.class, args);
+       }
+   }
+   ```
 
+5. 业务类
 
+   - 业务逻辑接口+*@FeignClient配置调用provider服务*
 
+   - 新建`PaymentFeignService接口`并*新增注解`@FeignClient`*
+
+     ```java
+     package com.shanhai.springcloud.service;
+     
+     import com.shanhai.springcloud.entities.CommonResult;
+     import com.shanhai.springcloud.entities.Payment;
+     import org.springframework.cloud.openfeign.FeignClient;
+     import org.springframework.stereotype.Component;
+     import org.springframework.web.bind.annotation.GetMapping;
+     import org.springframework.web.bind.annotation.PathVariable;
+     
+     @Component
+     @FeignClient(value = "CLOUD-PAYMENT-SERVICE")
+     public interface PaymentFeignService {
+         @GetMapping(value = "/payment/get/{id}")
+         public CommonResult<Payment> getPaymentById(@PathVariable("id") Long id);
+     }
+     ```
+
+   - 控制层Controller
+
+     ```java
+     @RestController
+     @Slf4j
+     public class OrderFeignController {
+         @Resource
+         private PaymentFeignService paymentFeignService;
+     
+         @GetMapping(value = "/consumer/payment/get/{id}")
+         public CommonResult<Payment> getPaymentById(@PathVariable("id") Long id) {
+             CommonResult<Payment> commonResult = paymentFeignService.getPaymentById(id);
+             log.info("commonResult.Payment" + commonResult.getData());
+             return commonResult;
+         }
+     }
+     ```
 
+6. 测试
 
+   先启动2个eureka集群7001/7002
 
+   再启动2个微服务8001/8002
 
+   启动cloud-consumer-feign-order80
 
+   访问：`http://localhost/consumer/payment/get/31`
 
+   Feign自带负载均衡配置项
+
+   ![image-20221224195005765](SpringCloud-尚硅谷.assets/image-20221224195005765.png)
+
+   ![image-20221224195015313](SpringCloud-尚硅谷.assets/image-20221224195015313.png)
+
+7. 小总结
 
+   ![image-20221224195409947](SpringCloud-尚硅谷.assets/image-20221224195409947.png)
 
 
 
+### 3 OpenFeign超时控制
 
+超时设置，故意设置超时演示出错情况：
 
+1. 服务提供方8001故意写暂停程序：8001 controller
 
+   ```java
+   @GetMapping(value = "/payment/feign/timeout")
+   public String paymentFeignTimeOut()
+   {
+       System.out.println("*****paymentFeignTimeOut from port: " + serverPort);
+       //暂停几秒钟线程
+       try {
+           TimeUnit.SECONDS.sleep(3);
+       } catch (InterruptedException e) {
+           e.printStackTrace();
+       }
+       return serverPort;
+   }
+   ```
 
+2. 服务消费方80添加超时方法PaymentFeignService
 
+   ```java
+   @Component
+   @FeignClient(value = "CLOUD-PAYMENT-SERVICE")
+   public interface PaymentFeignService {
+       @GetMapping(value = "/payment/get/{id}")
+       CommonResult<Payment> getPaymentById(@PathVariable("id") Long id);
+   
+       @GetMapping(value = "/payment/feign/timeout")
+       String paymentFeignTimeOut();
+   }
+   ```
 
+3. 服务消费方80添加超时方法OrderFeignController
 
+   ```java
+   @RestController
+   @Slf4j
+   public class OrderFeignController {
+       @Resource
+       private PaymentFeignService paymentFeignService;
+   
+       @GetMapping(value = "/consumer/payment/get/{id}")
+       public CommonResult<Payment> getPaymentById(@PathVariable("id") Long id) {
+           CommonResult<Payment> commonResult = paymentFeignService.getPaymentById(id);
+           log.info("commonResult.Payment" + commonResult.getData());
+           return commonResult;
+       }
+   
+       @GetMapping(value = "/consumer/payment/feign/timeout")
+       public String paymentFeignTimeOut(){
+           return paymentFeignService.paymentFeignTimeOut();
+       }
+   }
+   ```
 
+4. 测试：`http://localhost/consumer/payment/feign/timeout`
 
+   错误页面：
 
+   ![image-20221224201822915](SpringCloud-尚硅谷.assets/image-20221224201822915.png)
 
 
 
+OpenFeign默认等待1秒钟，超过后报错：默认Feign客户端只等待一秒钟，但是服务端处理需要超过1秒钟，导致Feign客户端不想等待了，直接返回报错。为了避免这样的情况，有时候我们需要设置Feign客户端的超时控制。
 
+yml文件中开启配置
 
+OpenFeign默认支持Ribbon
 
+YML文件里需要开启OpenFeign客户端超时控制
 
+```yaml
+server:
+  port: 80
 
+eureka:
+  client:
+    register-with-eureka: false
+    service-url:
+      defaultZone: http://eureka7001.com:7001/eureka/,http://eureka7002.com:7002/eureka/
 
+#设置feign客户端超时时间(OpenFeign默认支持ribbon)
+ribbon:
+  #指的是建立连接所用的时间，适用于网络状况正常的情况下,两端连接所用的时间
+  ReadTimeout: 5000
+  #指的是建立连接后从服务器读取到可用资源所用的时间
+  ConnectTimeout: 5000
+```
 
+测试：测试通过
 
+![image-20221224202109772](SpringCloud-尚硅谷.assets/image-20221224202109772.png)
 
 
 
+### 4 OpenFeign日志打印功能
 
+是什么？
 
+Feign 提供了日志打印功能，我们可以通过配置来调整日志级别，从而了解 Feign 中 Http 请求的细节。
 
+说白了就是**对Feign接口的调用情况进行监控和输出**。
 
 
 
+日志级别：
 
+- NONE：默认的，不显示任何日志；
+- BASIC：仅记录请求方法、URL、响应状态码及执行时间；
+- HEADERS：除了 BASIC 中定义的信息之外，还有请求和响应的头信息；
+- FULL：除了 HEADERS 中定义的信息之外，还有请求和响应的正文及元数据。
 
 
 
+配置日志bean：
+
+```java
+package com.shanhai.springcloud.config;
+
+import feign.Logger;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+public class FeignConfig {
+    @Bean
+    Logger.Level feignLoggerLevel() {
+        return Logger.Level.FULL;
+    }
+}
+```
+
+
+
+YML文件里需要开启日志的Feign客户端：
+
+```yaml
+server:
+  port: 80
+
+eureka:
+  client:
+    register-with-eureka: false
+    service-url:
+      defaultZone: http://eureka7001.com:7001/eureka/,http://eureka7002.com:7002/eureka/
+
+#设置feign客户端超时时间(OpenFeign默认支持ribbon)
+ribbon:
+  #指的是建立连接所用的时间，适用于网络状况正常的情况下,两端连接所用的时间
+  ReadTimeout: 5000
+  #指的是建立连接后从服务器读取到可用资源所用的时间
+  ConnectTimeout: 5000
+
+logging:
+  level:
+    # feign日志以什么级别监控哪个接口
+    com.shanhai.springcloud.service.PaymentFeignService: debug
+```
+
+
+
+测试：后台日志查看
+
+![image-20221224202948935](SpringCloud-尚硅谷.assets/image-20221224202948935.png)
+
++++
+
+## 九、Hystrix断路器
+
+### 1 概述
+
+> 分布式系统面临的问题
+
+*复杂分布式体系结构中的应用程序有数十个依赖关系，每个依赖关系在某些时候将不可避免地失败*。
+
+![image-20221224204608808](SpringCloud-尚硅谷.assets/image-20221224204608808.png)
+
+**服务雪崩**：
+
+多个微服务之间调用的时候，假设微服务A调用微服务B和微服务C，微服务B和微服务C又调用其它的微服务，这就是所谓的“**扇出**”。如果扇出的链路上某个微服务的调用响应时间过长或者不可用，对微服务A的调用就会占用越来越多的系统资源，进而引起系统崩溃，所谓的“雪崩效应”。
+
+对于高流量的应用来说，单一的后端依赖可能会导致所有服务器上的所有资源都在几秒钟内饱和。比失败更糟糕的是，这些应用程序还可能导致服务之间的延迟增加，备份队列，线程和其他系统资源紧张，导致整个系统发生更多的级联故障。这些都表示需要对故障和延迟进行隔离和管理，以便单个依赖关系的失败，不能取消整个应用程序或系统。
+
+所以，通常当你发现一个模块下的某个实例失败后，这时候这个模块依然还会接收流量，然后这个有问题的模块还调用了其他的模块，这样就会发生级联故障，或者叫雪崩。
+
+
+
+> Hystrix是什么？
+
+Hystrix是一个用于处理分布式系统的**延迟**和**容错**的开源库，在分布式系统里，许多依赖不可避免的会调用失败，比如超时、异常等，Hystrix能够保证在一个依赖出问题的情况下，**不会导致整体服务失败，避免级联故障，以提高分布式系统的弹性**。
+
+“断路器”本身是一种开关装置，当某个服务单元发生故障之后，通过断路器的故障监控（类似熔断保险丝），**向调用方返回一个符合预期的、可处理的备选响应（FallBack），而不是长时间的等待或者抛出调用方无法处理的异常**，这样就保证了服务调用方的线程不会被长时间、不必要地占用，从而避免了故障在分布式系统中的蔓延，乃至雪崩。
+
+
+
+> Hystrix能干嘛？
+
+- 服务降级
+- 服务熔断
+- 接近实时的监控
+- ......
+
+
+
+官网资料：https://github.com/Netflix/Hystrix/wiki/How-To-Use
+
+*Hystrix官宣，停更进维*：https://github.com/Netflix/Hystrix
+
+- 被动修复bugs
+- 不再接受合并请求
+- 不再发布新版本
+
+![image-20221224205534981](SpringCloud-尚硅谷.assets/image-20221224205534981.png)
+
+
+
+### 2 Hystrix重要概念
+
+- **服务降级**
+
+  服务器忙，请稍后再试，不让客户端等待并立刻返回一个友好提示，fallback
+
+  哪些情况会出发降级：
+
+  程序运行异常、超时、服务熔断触发服务降级、线程池/信号量打满也会导致服务降级
+
+- **服务熔断**
+
+  类比保险丝达到最大服务访问后，直接拒绝访问，拉闸限电，然后调用服务降级的方法并返回友好提示
+
+  就是保险丝：服务的降级->进而熔断->恢复调用链路
+
+- **服务限流**
+
+  秒杀高并发等操作，严禁一窝蜂的过来拥挤，大家排队，一秒钟N个，有序进行
+
+
+
+### 3 Hystrix案例
+
+#### 3.1 构建提供者支付模块8001
+
+1. 新建Maven子模块：cloud-provider-hystrix-payment8001
+
+2. POM
+
+   ```xml
+   <dependencies>
+       <!--hystrix-->
+       <dependency>
+           <groupId>org.springframework.cloud</groupId>
+           <artifactId>spring-cloud-starter-netflix-hystrix</artifactId>
+       </dependency>
+       <!--eureka client-->
+       <dependency>
+           <groupId>org.springframework.cloud</groupId>
+           <artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
+       </dependency>
+       <!--web-->
+       <dependency>
+           <groupId>org.springframework.boot</groupId>
+           <artifactId>spring-boot-starter-web</artifactId>
+       </dependency>
+       <dependency>
+           <groupId>org.springframework.boot</groupId>
+           <artifactId>spring-boot-starter-actuator</artifactId>
+       </dependency>
+       <dependency>
+           <groupId>org.springframework.boot</groupId>
+           <artifactId>spring-boot-devtools</artifactId>
+           <scope>runtime</scope>
+           <optional>true</optional>
+       </dependency>
+       <dependency>
+           <groupId>org.projectlombok</groupId>
+           <artifactId>lombok</artifactId>
+           <optional>true</optional>
+       </dependency>
+       <dependency>
+           <groupId>org.springframework.boot</groupId>
+           <artifactId>spring-boot-starter-test</artifactId>
+           <scope>test</scope>
+       </dependency>
+   </dependencies>
+   ```
+
+3. YML
+
+   ```yaml
+   server:
+     port: 8001
+   
+   spring:
+     application:
+       name: cloud-provider-hystrix-payment
+   
+   eureka:
+     client:
+       register-with-eureka: true
+       fetch-registry: true
+       service-url:
+         defaultZone: http://eureka7001.com:7001/eureka
+   ```
+
+4. 主启动类
+
+   ```java
+   @SpringBootApplication
+   @EnableEurekaClient //本服务启动后会自动注册进eureka服务中
+   public class PaymentHystrixMain8001 {
+       public static void main(String[] args) {
+           SpringApplication.run(PaymentHystrixMain8001.class, args);
+       }
+   }
+   ```
+
+5. 业务类
+
+   service
+
+   ```java
+   @Service
+   public class PaymentService {
+       /**
+        * 正常访问，一切OK
+        * @param id
+        * @return
+        */
+       public String paymentInfo_OK(Integer id) {
+           return "线程池：" + Thread.currentThread().getName() +
+                   "paymentInfo_OK,id: " + id + "\t" + "O(∩_∩)O";
+       }
+   
+       /**
+        * 超时访问，演示降级
+        * @param id
+        * @return
+        */
+       public String paymentInfo_TimeOut(Integer id) {
+           Integer timeSeconds = 3;
+           try { 
+               TimeUnit.SECONDS.sleep(timeSeconds); 
+           } catch (InterruptedException e) { 
+               e.printStackTrace(); }
+           return "线程池：" + Thread.currentThread().getName() + "paymentInfo_TimeOut,id: " +
+                   id + "\t" + "O(∩_∩)O，耗费" + timeSeconds + "秒";
+       }
+   }
+   ```
+
+   controller
+
+   ```java
+   @RestController
+   @Slf4j
+   public class PaymentController {
+       @Resource
+       private PaymentService paymentService;
+   
+       @GetMapping("/payment/hystrix/ok/{id}")
+       public String paymentInfo_OK(@PathVariable("id") Integer id) {
+           String result = paymentService.paymentInfo_OK(id);
+           log.info("****result: "+result);
+           return result;
+       }
+   
+       @GetMapping("/payment/hystrix/timeout/{id}")
+       public String paymentInfo_TimeOut(@PathVariable("id") Integer id) throws InterruptedException {
+           String result = paymentService.paymentInfo_TimeOut(id);
+           log.info("****result: "+result);
+           return result;
+       }
+   }
+   ```
+
+6. 正常测试
+
+   启动eureka7001
+
+   启动cloud-provider-hystrix-payment8001
+
+   访问:
+
+   success的方法：`http://localhost:8001/payment/hystrix/ok/31`
+
+   每次调用耗费3秒钟：`http://localhost:8001/payment/hystrix/timeout/31`
+
+   ![image-20221224230332291](SpringCloud-尚硅谷.assets/image-20221224230332291.png)
+
+   ![image-20221224230334321](SpringCloud-尚硅谷.assets/image-20221224230334321.png)
+
+   上述module均OK，以上述为根基平台，从正确->错误->降级熔断->恢复
+
+
+
+#### 3.2 高并发测试1
+
+上述在非高并发情形下，还能勉强满足，but......
+
+Jmeter压测测试：
+
+- 开启Jmeter，来20000个并发压死8001，20000个请求都去访问paymentInfo_TimeOut服务
+
+  ![image-20221224231345173](SpringCloud-尚硅谷.assets/image-20221224231345173.png)
+
+  ![image-20221224231347219](SpringCloud-尚硅谷.assets/image-20221224231347219.png)
+
+- 再来一个访问：`http://localhost:8001/payment/hystrix/ok/31`
+  
+
+- 看演示结果
+
+  两个请求都在自己转圈圈
+
+  为什么会被卡死：tomcat的默认的工作线程数被打满了，没有多余的线程来分解压力和处理。
+
+- Jmeter压测结论
+
+  上面还是**服务提供者8001**自己测试，假如此时外部的消费者80也来访问，那**消费者**只能干等，最终导致消费端80不满意，服务端8001直接被拖死。
+
+
+
+#### 3.3 构建消费者模块80
+
+> 看热闹不嫌弃事大，80新建加入
+
+1. 新建Maven子模块：cloud-consumer-feign-hystrix-order80
+
+2. POM
+
+   ```xml
+   <dependencies>
+     <!--openfeign-->
+     <dependency>
+       <groupId>org.springframework.cloud</groupId>
+       <artifactId>spring-cloud-starter-openfeign</artifactId>
+     </dependency>
+     <!--hystrix-->
+     <dependency>
+       <groupId>org.springframework.cloud</groupId>
+       <artifactId>spring-cloud-starter-netflix-hystrix</artifactId>
+     </dependency>
+     <!--eureka client-->
+     <dependency>
+       <groupId>org.springframework.cloud</groupId>
+       <artifactId>spring-cloud-starter-netflix-eureka-client</artifactId>
+     </dependency>
+     <!--web-->
+     <dependency>
+       <groupId>org.springframework.boot</groupId>
+       <artifactId>spring-boot-starter-web</artifactId>
+     </dependency>
+     <dependency>
+       <groupId>org.springframework.boot</groupId>
+       <artifactId>spring-boot-starter-actuator</artifactId>
+     </dependency>
+     <!--一般基础通用配置-->
+     <dependency>
+       <groupId>org.springframework.boot</groupId>
+       <artifactId>spring-boot-devtools</artifactId>
+       <scope>runtime</scope>
+       <optional>true</optional>
+     </dependency>
+     <dependency>
+       <groupId>org.projectlombok</groupId>
+       <artifactId>lombok</artifactId>
+       <optional>true</optional>
+     </dependency>
+     <dependency>
+       <groupId>org.springframework.boot</groupId>
+       <artifactId>spring-boot-starter-test</artifactId>
+       <scope>test</scope>
+     </dependency>
+   </dependencies>
+   ```
+
+3. YML
+
+   ```yaml
+   server:
+     port: 80
+   
+   eureka:
+     client:
+       register-with-eureka: false
+       service-url:
+         defaultZone: http://eureka7001.com:7001/eureka/
+   ```
+
+4. 主启动类
+
+   ```java
+   @SpringBootApplication
+   @EnableFeignClients
+   public class OrderHystrixMain80 {
+       public static void main(String[] args) {
+           SpringApplication.run(OrderHystrixMain80.class,args);
+       }
+   }
+   ```
+
+5. 业务类
+
+   service接口
+
+   ```java
+   @Component
+   @FeignClient(value = "CLOUD-PROVIDER-HYSTRIX-PAYMENT")
+   public interface PaymentHystrixService {
+       @GetMapping("/payment/hystrix/ok/{id}")
+       String paymentInfo_OK(@PathVariable("id") Integer id);
+   
+       @GetMapping("/payment/hystrix/timeout/{id}")
+       String paymentInfo_TimeOut(@PathVariable("id") Integer id);
+   }
+   ```
+
+   controller
+
+   ```java
+   @RestController
+   @Slf4j
+   public class OrderHystrixController {
+       @Resource
+       private PaymentHystrixService paymentHystrixService;
+   
+       @GetMapping("/consumer/payment/hystrix/ok/{id}")
+       public String paymentInfo_OK(@PathVariable("id") Integer id) {
+           String result = paymentHystrixService.paymentInfo_OK(id);
+           log.info("****result: "+result);
+           return result;
+       }
+   
+       @GetMapping("/consumer/payment/hystrix/timeout/{id}")
+       public String paymentInfo_TimeOut(@PathVariable("id") Integer id) throws InterruptedException {
+           String result = paymentHystrixService.paymentInfo_TimeOut(id);
+           log.info("****result: "+result);
+           return result;
+       }
+   }
+   ```
+
+6. 正常测试：`http://localhost/consumer/payment/hystrix/ok/31`
+
+   正常访问
+
+
+
+#### 3.4 高并发测试2
+
+高并发测试：
+
+2W个线程压8001吗，消费端80微服务再去访问正常的Ok微服务8001地址
+
+`http://localhost/consumer/payment/hystrix/ok/32`
+
+消费者80，o(╥﹏╥)o
+
+- 要么转圈圈等待
+
+- 要么消费端报超时错误
+
+  ![image-20221224201822915](SpringCloud-尚硅谷.assets/image-20221224201822915.png)
+
+
+
+故障现象和导致原因：
+
+- 8001同一层次的其它接口服务被困死，因为tomcat线程池里面的工作线程已经被挤占完毕
+- 80此时调用8001，客户端访问响应缓慢，转圈圈
+- 结论：正因为有上述故障或不佳表现，才有我们的*降级*/*熔断*/*限流*等技术诞生
+
+
+
+如何解决：
+
+- 超时导致服务器变慢(转圈)：超时不再等待
+- 出错(宕机或程序运行出错)：出错要有兜底
+- 解决：
+  - 对方服务(8001)超时了，调用者(80)不能一直卡死等待，必须有服务降级
+  - 对方服务(8001)宕机了，调用者(80)不能一直卡死等待，必须有服务降级
+  - 对方服务(8001)OK，调用者(80)自己出故障或有自我要求（自己的等待时间小于服务提供者），自己处理降级
+
+
+
+#### 3.5 服务降级
 
 
 
