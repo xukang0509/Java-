@@ -229,7 +229,7 @@ chkconfig rabbitmq-server on
 停止服务(选择执行)
 
 ```
-/sbin/service rabbitmq-server stop 
+/sbin/service rabbitmq-server stop
 ```
 
 开启 web 管理插件
@@ -259,8 +259,7 @@ rabbitmqctl set_user_tags admin administrator
 设置用户权限
 
 ```
-set_permissions [-p <vhostpath>] <user> <conf> <write> <read>
-rabbitmqctl set_permissions -p "/" admin ".*" ".*" ".*"
+set_permissions [-p <vhostpath>] <user> <conf> <write> <read> rabbitmqctl set_permissions -p "/" admin ".*" ".*" ".*"
 用户 user_admin 具有/vhost1 这个 virtual host 中所有资源的配置、写、读权限
 ```
 
