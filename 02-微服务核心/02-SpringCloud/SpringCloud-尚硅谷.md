@@ -7357,9 +7357,9 @@ https://github.com/alibaba/spring-cloud-alibaba/blob/master/README-zh.md
 
 +++
 
-## 十六、SpringCloud Alibaba Nacos服务注册和配置中心
+## 十六、Nacos服务注册和配置中心
 
-### 1 简介
+### 1 简介
 
 1. **为什么叫Nacos**？
 
@@ -7728,6 +7728,1494 @@ Nacos和CAP：
 
 
 ### 4 Nacos作为服务配置中心演示
+
+#### 4.1 Nacos作为配置中心-基础配置
+
+1. 新建Maven子模块：cloudalibaba-config-nacos-client3377
+
+2. POM
+
+   ```xml
+   <dependencies>
+       <!--nacos-config-->
+       <dependency>
+           <groupId>com.alibaba.cloud</groupId>
+           <artifactId>spring-cloud-starter-alibaba-nacos-config</artifactId>
+       </dependency>
+       <!--nacos-discovery-->
+       <dependency>
+           <groupId>com.alibaba.cloud</groupId>
+           <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
+       </dependency>
+       <!--web + actuator-->
+       <dependency>
+           <groupId>org.springframework.boot</groupId>
+           <artifactId>spring-boot-starter-web</artifactId>
+       </dependency>
+       <dependency>
+           <groupId>org.springframework.boot</groupId>
+           <artifactId>spring-boot-starter-actuator</artifactId>
+       </dependency>
+       <!--一般基础配置-->
+       <dependency>
+           <groupId>org.springframework.boot</groupId>
+           <artifactId>spring-boot-devtools</artifactId>
+           <scope>runtime</scope>
+           <optional>true</optional>
+       </dependency>
+       <dependency>
+           <groupId>org.projectlombok</groupId>
+           <artifactId>lombok</artifactId>
+           <optional>true</optional>
+       </dependency>
+       <dependency>
+           <groupId>org.springframework.boot</groupId>
+           <artifactId>spring-boot-starter-test</artifactId>
+           <scope>test</scope>
+       </dependency>
+   </dependencies>
+   ```
+
+3. YML
+
+   bootstrap.yml
+
+   ```yaml
+   # nacos配置
+   server:
+     port: 3377
+   
+   spring:
+     application:
+       name: nacos-config-client
+     cloud:
+       nacos:
+         discovery:
+           server-addr: localhost:8848 #Nacos服务注册中心地址
+         config:
+           server-addr: localhost:8848 #Nacos作为配置中心地址
+           file-extension: yaml #指定yaml格式的配置
+   
+   # ${spring.application.name}-${spring.profile.active}.${spring.cloud.nacos.config.file-extension}
+   # nacos-config-client-dev.yaml
+   ```
+
+   application.yml
+
+   ```yaml
+   spring:
+     profiles:
+       active: dev # 表示开发环境
+   ```
+
+   *why配置两个*？
+
+   Nacos同springcloud-config一样，在项目初始化时，要保证先从配置中心进行配置拉取，拉取配置之后，才能保证项目的正常启动。
+
+   springboot中配置文件的加载是存在优先级顺序的，**bootstrap优先级高于application**。
+
+4. 主启动类
+
+   ```java
+   @EnableDiscoveryClient
+   @SpringBootApplication
+   public class NacosConfigClientMain3377 {
+       public static void main(String[] args) {
+           SpringApplication.run(NacosConfigClientMain3377.class, args);
+       }
+   }
+   ```
+
+5. 业务类
+
+   `@RefreshScope`：通过SpringCloud原生注解`@RefreshScope`实现配置的自动更新
+
+   ```java
+   @RestController
+   @RefreshScope //在控制器类加入@RefreshScope注解使当前类下的配置支持Nacos的动态刷新功能。
+   public class ConfigClientController {
+       @Value("${config.info}")
+       private String configInfo;
+   
+       @GetMapping("/config/info")
+       public String getConfigInfo() {
+           return configInfo;
+       }
+   }
+   ```
+
+6. 在Nacos中添加配置信息
+
+   Nacos中的匹配规则：
+
+   - 理论
+
+     > Nacos中的dataid的组成格式及与SpringBoot配置文件中的匹配规则
+
+     [官网](https://nacos.io/zh-cn/docs/quick-start-spring-cloud.html)：`${spring.application.name}-${spring.profiles.active}.${spring.cloud.nacos.config.file-extension}`
+
+     ![image-20221228110821321](SpringCloud-尚硅谷.assets/image-20221228110821321.png)
+
+   - 实操
+
+     > 配置新增：nacos-config-client-dev.yaml
+
+     ![image-20221228110955106](SpringCloud-尚硅谷.assets/image-20221228110955106.png)
+
+     > Nacos界面配置对应
+
+     公式：`${prefix}-${spring.profiles.active}.${spring.cloud.nacos.config.file-extension}`
+
+     prefix 默认为 spring.application.name 的值。
+
+     spring.profile.active 即为当前环境对应的 profile，可以通过配置项 spring.profile.active 来配置。
+
+     file-exetension 为配置内容的数据格式，可以通过配置项 spring.cloud.nacos.config.file-extension 来配置。
+
+     ![image-20221228112755591](SpringCloud-尚硅谷.assets/image-20221228112755591.png)
+
+     > 历史配置
+
+     Nacos会记录配置文件的历史版本默认保留30天，此外还有一键回滚功能，**回滚**操作将会触发配置更新
+
+     ![image-20221228113054153](SpringCloud-尚硅谷.assets/image-20221228113054153.png)
+
+7. 测试
+
+   启动前需要在nacos客户端-配置管理-配置管理栏目下有对应的yaml配置文件
+
+   ![image-20221228113318240](SpringCloud-尚硅谷.assets/image-20221228113318240.png)
+
+   运行cloud-config-nacos-client3377的主启动类
+
+   调用接口查看配置信息：`http://localhost:3377/config/info`
+
+   自带动态刷新：修改下Nacos中的yaml配置文件，再次调用查看配置的接口，就会发现配置已经刷新
+
+
+
+#### 4.2 Nacos作为配置中心-分类配置
+
+##### 4.2.1 概述
+
+> **问题**：多环境多项目管理
+
+- **问题一**：
+
+  实际开发中，通常一个系统会准备*dev开发环境*、*test测试环境*、*prod生产环境*。
+
+  如何保证指定环境启动时服务能正确读取到Nacos上相应环境的配置文件呢？
+
+- **问题二**：
+
+  一个大型分布式微服务系统会有很多微服务子项目，每个微服务项目又都会有相应的开发环境、测试环境、预发环境、正式环境......
+
+  那怎么对这些微服务配置进行管理呢？
+
+
+
+> Nacos的图形化管理界面：
+
+- 配置管理
+
+  ![image-20221228122236394](SpringCloud-尚硅谷.assets/image-20221228122236394.png)
+
+- 命名空间
+
+  ![image-20221228122326570](SpringCloud-尚硅谷.assets/image-20221228122326570.png)
+
+
+
+> `Namespace`+`Group`+`Data ID`三者关系？为什么这么设计？
+
+1. 是什么？
+
+   类似Java里面的package名和类名
+
+   最外层的namespace是可以用于区分部署环境的，Group和DataID逻辑上区分两个目标对象。
+
+2. 三者情况
+
+   ![image-20221228122616351](SpringCloud-尚硅谷.assets/image-20221228122616351.png)
+
+   默认情况：`Namespace=public，Group=DEFAULT_GROUP, 默认Cluster是DEFAULT`
+
+   Nacos默认的命名空间是public，Namespace主要用来实现隔离。
+
+   比方说我们现在有三个环境：开发、测试、生产环境，我们就可以创建三个Namespace，不同的Namespace之间是隔离的。
+
+   Group默认是DEFAULT_GROUP，Group可以把不同的微服务划分到同一个分组里面去。
+
+   Service就是微服务；一个Service可以包含多个Cluster（集群），Nacos默认Cluster是DEFAULT，Cluster是对指定微服务的一个虚拟划分。
+
+   比方说为了容灾，将Service微服务分别部署在了杭州机房和广州机房，这时就可以给杭州机房的Service微服务起一个集群名称（HZ），给广州机房的Service微服务起一个集群名称（GZ），还可以尽量让同一个机房的微服务互相调用，以提升性能。
+
+   最后是Instance，就是微服务的实例。
+
+
+
+##### 4.2.2 三种方案加载配置
+
+> DataID方案
+
+指定`spring.profiles.active`和配置文件的`DataID`来使不同环境下读取不同的配置
+
+1. 默认空间+默认分组+新建dev和test两个DataID
+
+   - 新建dev配置DataID
+
+   ![image-20221228123214956](SpringCloud-尚硅谷.assets/image-20221228123214956.png)
+
+   - 新建test配置DataID
+
+   ![image-20221228123420363](SpringCloud-尚硅谷.assets/image-20221228123420363.png)
+
+2. 通过`spring.profiles.active`属性就能进行多环境下配置文件的读取
+
+   ![image-20221228123710429](SpringCloud-尚硅谷.assets/image-20221228123710429.png)
+
+3. 测试：重启3377
+
+   `http://localhost:3377/config/info`
+
+   配置是什么就加载什么：test
+
+   ![image-20221228123915987](SpringCloud-尚硅谷.assets/image-20221228123915987.png)
+
+
+
+> Group方案
+
+通过`Group`实现环境区分
+
+1. 新建Group
+
+   ![image-20221228124411827](SpringCloud-尚硅谷.assets/image-20221228124411827.png)
+
+2. 在nacos图形界面控制台上面新建配置文件DataID
+
+   ![image-20221228124555197](SpringCloud-尚硅谷.assets/image-20221228124555197.png)
+
+3. bootstrap.yml + application.yml
+
+   **在config下增加一条group的配置即可。可配置为DEV_GROUP或TEST_GROUP**。
+
+   bootstrap.yml
+
+   ```yaml
+   # nacos配置
+   server:
+     port: 3377
+   
+   spring:
+     application:
+       name: nacos-config-client
+     cloud:
+       nacos:
+         discovery:
+           server-addr: localhost:8848 #Nacos服务注册中心地址
+         config:
+           server-addr: localhost:8848 #Nacos作为配置中心地址
+           file-extension: yaml #指定yaml格式的配置
+           #group: DEV_GROUP
+           group: TEST_GROUP
+   
+   # ${spring.application.name}-${spring.profile.active}.${spring.cloud.nacos.config.file-extension}
+   # nacos-config-client-info.yaml
+   ```
+
+   application.yml
+
+   ```yaml
+   spring:
+     profiles:
+       #active: dev # 表示开发环境
+       #active: test # 表示测试环境
+       active: info
+   ```
+
+4. 测试：重启3377
+
+   `http://localhost:3377/config/info`
+
+   配置是什么就加载什么：test
+
+   ![image-20221228125138154](SpringCloud-尚硅谷.assets/image-20221228125138154.png)
+
+> Namespace方案
+
+1. 新建dev/test的Namespace
+
+   ![image-20221228125349867](SpringCloud-尚硅谷.assets/image-20221228125349867.png)
+
+2. 回到服务管理-服务列表查看
+
+   ![image-20221228125440357](SpringCloud-尚硅谷.assets/image-20221228125440357.png)
+
+3. 按照域名配置填写
+
+   ![image-20221228125925505](SpringCloud-尚硅谷.assets/image-20221228125925505.png)
+
+4. YML
+
+   bootstrap.yml
+
+   ```yaml
+   # nacos配置
+   server:
+     port: 3377
+   
+   spring:
+     application:
+       name: nacos-config-client
+     cloud:
+       nacos:
+         discovery:
+           server-addr: localhost:8848 #Nacos服务注册中心地址
+         config:
+           server-addr: localhost:8848 #Nacos作为配置中心地址
+           file-extension: yaml #指定yaml格式的配置
+           namespace: 317872c3-56f5-46a0-9d11-3950319a238c
+           group: TEST_GROUP
+           #group: DEV_GROUP
+   
+   # ${spring.application.name}-${spring.profile.active}.${spring.cloud.nacos.config.file-extension}
+   # nacos-config-client-dev.yaml
+   ```
+
+   application.yml
+
+   ```yaml
+   spring:
+     profiles:
+       active: dev
+   ```
+
+5. 测试：重启3377
+
+   `http://localhost:3377/config/info`
+
+   配置是什么就加载什么：dev 命名空间下 TEST_GROUP
+
+   ![image-20221228130431966](SpringCloud-尚硅谷.assets/image-20221228130431966.png)
+
+
+
+### 5 Nacos集群和持久化配置
+
+#### 5.1 官网说明
+
+[官网](https://nacos.io/zh-cn/docs/cluster-mode-quick-start.html)：
+
+- 官网架构图
+
+  ![image-20221228132551244](SpringCloud-尚硅谷.assets/image-20221228132551244.png)
+
+- 上图官网翻译，真实情况
+
+  ![image-20221228132634858](SpringCloud-尚硅谷.assets/image-20221228132634858.png)
+
+- [说明](https://nacos.io/zh-cn/docs/deployment.html)：
+
+  默认Nacos使用嵌入式数据库实现数据的存储。所以，如果启动多个默认配置下的Nacos节点，数据存储是存在一致性问题的。
+
+  为了解决这个问题，**Nacos采用了集中式存储的方式来支持集群化部署，目前只支持MySQL的存储**。
+
+  按照上述，我们需要mysql数据库
+
+  ![image-20221228132851073](SpringCloud-尚硅谷.assets/image-20221228132851073.png)
+
+  ![image-20221228133025526](SpringCloud-尚硅谷.assets/image-20221228133025526.png)
+
+
+
+#### 5.2 Nacos持久化配置解释
+
+- Nacos默认自带的是嵌入式数据库derby，[config/pom.xml](https://github.com/alibaba/nacos/blob/develop/config/pom.xml)
+
+- derby到mysql切换配置步骤
+
+  1. nacos-server-1.4.4\nacos\conf目录下找到sql脚本：nacos-mysql.sql
+
+     执行脚本
+
+  2. nacos-server-1.4.4\nacos\conf目录下找到application.properties
+
+     添加：
+
+     ```properties
+     spring.datasource.platform=mysql
+      
+     db.num=1
+     db.url.0=jdbc:mysql://192.168.88.100:3306/nacos_config?characterEncoding=utf8&connectTimeout=1000&socketTimeout=3000&autoReconnect=true
+     db.user=root
+     db.password=123456
+     ```
+
+  3. 启动Nacos，可以看到是个全新的空记录界面，以前是记录进derby
+
+     新建配置：
+
+     ![image-20221228134856951](SpringCloud-尚硅谷.assets/image-20221228134856951.png)
+
+     数据库查询配置：
+
+     ![image-20221228134951814](SpringCloud-尚硅谷.assets/image-20221228134951814.png)
+
+
+
+#### 5.3 Linux版Nacos+MySQL生产环境配置
+
+- 预计需要，1个Nginx+3个nacos注册中心+1个mysql
+- Nginx：192.168.88.114:1111
+- nacos：192.168.88.114:[3333|4444|5555]
+- mysql：192.168.88.100:3306
+
+
+
+> Nacos下载安装Linux版
+
+- 从[官网](https://github.com/alibaba/nacos/releases)下载Nacos：Tags选择1.4.3稳定版本:Linux
+
+  不用1.4.4版本的原因：通过nginx请求转发的nacos会有账号密码错误，登录失败的问题
+
+  ![image-20221228164133356](SpringCloud-尚硅谷.assets/image-20221228164133356.png)
+
+- 解压后安装
+
+  将下载好的tar.gz包放在`/opt/software`文件夹下
+
+  ![image-20221228165321454](SpringCloud-尚硅谷.assets/image-20221228165321454.png)
+
+  安装到`/mynacos/`文件夹下
+
+  ```bash
+  tar -zxvf nacos-server-1.4.3.tar.gz -C /mynacos
+  ```
+
+  ![image-20221228140745050](SpringCloud-尚硅谷.assets/image-20221228140745050.png)
+
+
+
+> 集群配置步骤(重点)
+
+1. **Linux服务器上mysql数据库配置**
+
+   SQL脚本在哪里：
+
+   ![image-20221228143336460](SpringCloud-尚硅谷.assets/image-20221228143336460.png)
+
+   sql语句源文件：nacos-mysql.sql
+
+   192.168.88.100 Linux机器上的Mysql数据库粘贴
+
+   执行后结果
+
+   ![image-20221228143756384](SpringCloud-尚硅谷.assets/image-20221228143756384.png)
+
+2. **application.properties配置**
+
+   位置：
+
+   ![image-20221228144055194](SpringCloud-尚硅谷.assets/image-20221228144055194-1672209656367-3.png)
+
+   添加内容：
+
+   ```properties
+   spring.datasource.platform=mysql
+   
+   db.num=1
+   db.url.0=jdbc:mysql://192.168.88.100:3306/nacos_config?characterEncoding=utf8&connectTimeout=1000&socketTimeout=3000&autoReconnect=true
+   db.user=root
+   db.password=123456
+   ```
+
+3. **Linux服务器上nacos的集群配置cluster.conf**
+
+   梳理出3台nacos集器的不同服务端口号
+
+   复制出cluster.conf：
+
+   ![image-20221228144556290](SpringCloud-尚硅谷.assets/image-20221228144556290.png)
+
+   内容：这个IP不能写127.0.0.1，必须是Linux命令`hostname -i`能够识别的IP
+
+   ```
+   # ip:prot
+   192.168.88.114:3333
+   192.168.88.114:4444
+   192.168.88.114:5555
+   ```
+
+4. 编辑Nacos的启动脚本startup.sh，使它能够接受不同的启动端口
+
+   /mynacos/nacos/bin 目录下有 startup.sh
+
+   在什么地方，修改什么，怎么修改
+
+   思考：
+
+   /mynacos/nacos/bin 目录下有 startup.sh
+
+   平时单机版的启动，都是`./startup.sh`即可。
+
+   但是集群启动，我们希望可以类似其它软件的shell命令，传递不同的端口号启动不同的nacos实例。
+
+   命令：`./startup.sh -p 3333 `表示启动端口号为3333的nacos服务器实例，和上一步的cluster.conf配置的一致。
+
+   修改内容(老版本需要，新版本可能需要)：
+
+   ![image-20221228165713384](SpringCloud-尚硅谷.assets/image-20221228165713384.png)
+
+   ![image-20221228152608165](SpringCloud-尚硅谷.assets/image-20221228152608165.png)
+
+   ![image-20221228152731847](SpringCloud-尚硅谷.assets/image-20221228152731847.png)
+
+   执行方式：
+
+   ```bash
+   ./startup.sh -p 3333
+   ./startup.sh -p 4444
+   ./startup.sh -p 5555
+   ```
+
+   ![image-20221228152140761](SpringCloud-尚硅谷.assets/image-20221228152140761.png)
+
+5. Nginx的配置，由它作为负载均衡器
+
+   修改nginx的配置文件：
+
+   ![image-20221228153111901](SpringCloud-尚硅谷.assets/image-20221228153111901.png)
+
+   nginx.conf：
+
+   ![image-20221228154334998](SpringCloud-尚硅谷.assets/image-20221228154334998.png)
+
+   Nginx重新启动：`systemctl restart nginx`
+
+6. 截止到此处，1个Nginx+3个nacos注册中心+1个mysql
+
+   测试通过nginx访问nacos：`http://192.168.88.114:1111/nacos/#/login`
+
+   默认账号密码都是nacos，结果页面：
+
+   ![image-20221228170056575](SpringCloud-尚硅谷.assets/image-20221228170056575.png)
+
+   新建一个配置测试：
+
+   ![image-20221228170238534](SpringCloud-尚硅谷.assets/image-20221228170238534.png)
+
+   linux服务器的mysql插入一条记录：
+
+   ![image-20221228170328611](SpringCloud-尚硅谷.assets/image-20221228170328611.png)
+
+7. 测试
+
+   微服务`cloudalibaba-provider-payment9002`启动注册进nacos集群
+
+   YML：
+
+   ```yaml
+   server:
+     port: 9002
+   
+   spring:
+     application:
+       name: nacos-payment-provider
+     cloud:
+       nacos:
+         discovery:
+           #server-addr: localhost:8848 #配置本机的单机版Nacos地址
+           server-addr: 192.168.88.114:1111 #配置Linux的集群版Nacos地址
+   
+   management:
+     endpoints:
+       web:
+         exposure:
+           include: '*'
+   ```
+
+   结果：
+
+   ![image-20221228170734193](SpringCloud-尚硅谷.assets/image-20221228170734193.png)
+
+8. 高可用小总结：
+
+   ![image-20221228171527800](SpringCloud-尚硅谷.assets/image-20221228171527800.png)
+
++++
+
+## 十七、Sentinel实现熔断与限流
+
+### 1 Sentinel概述及下载安装
+
+官网：https://github.com/alibaba/Sentinel
+
+中文：https://github.com/alibaba/Sentinel/wiki/%E4%BB%8B%E7%BB%8D
+
+
+
+> Sentinel是什么？
+
+随着微服务的流行，服务和服务之间的稳定性变得越来越重要。Sentinel以流量为切入点，从流量控制、流量路由、熔断降级、系统自适应过载保护、热点流量防护等多个维度保护服务的稳定性。
+
+Sentinel 具有以下特征：
+
+- **丰富的应用场景**：Sentinel 承接了阿里巴巴近 10 年的双十一大促流量的核心场景，例如秒杀（即突发流量控制在系统容量可以承受的范围）、消息削峰填谷、集群流量控制、实时熔断下游不可用应用等。
+- **完备的实时监控**：Sentinel 同时提供实时的监控功能。您可以在控制台中看到接入应用的单台机器秒级数据，甚至 500 台以下规模的集群的汇总运行情况。
+- **广泛的开源生态**：Sentinel 提供开箱即用的与其它开源框架/库的整合模块，例如与 Spring Cloud、Apache Dubbo、gRPC、Quarkus 的整合。您只需要引入相应的依赖并进行简单的配置即可快速地接入 Sentinel。同时 Sentinel 提供 Java/Go/C++ 等多语言的原生实现。
+- **完善的 SPI 扩展机制**：Sentinel 提供简单易用、完善的 SPI 扩展接口。您可以通过实现扩展接口来快速地定制逻辑。例如定制规则管理、适配动态数据源等。
+
+一句话解释，之前我们讲解过的Hystrix
+
+
+
+去哪下：https://github.com/alibaba/Sentinel/releases
+
+
+
+> Sentinel能干嘛？
+
+![image-20221228174842078](SpringCloud-尚硅谷.assets/image-20221228174842078.png)
+
+
+
+> Sentinel[怎么玩](https://spring-cloud-alibaba-group.github.io/github-pages/greenwich/spring-cloud-alibaba.html#_spring_cloud_alibaba_sentinel)？
+
+解决服务使用中的各种问题：
+
+- 服务雪崩
+- 服务降级
+- 服务熔断
+- 服务限流
+
+
+
+> 安装Sentinel控制台
+
+sentinel组件由2部分构成：
+
+![image-20221228175153178](SpringCloud-尚硅谷.assets/image-20221228175153178.png)
+
+1. 后台
+2. 前台8080
+
+
+
+安装步骤：
+
+1. [下载](https://github.com/alibaba/Sentinel/releases)：下载到本地sentinel-dashboard-1.7.1.jar
+
+   ![image-20221228175322033](SpringCloud-尚硅谷.assets/image-20221228175322033.png)
+
+2. 运行命令
+
+   前提：**Java8环境**、**8080端口不能被占用**。
+
+   命令：`java -jar sentinel-dashboard-1.7.1.jar`
+
+3. 访问sentinel管理界面：http://localhost:8080
+
+   登录账号密码均为sentinel
+
+   ![image-20221228180243669](SpringCloud-尚硅谷.assets/image-20221228180243669.png)
+
+
+
+### 2 初始化演示工程
+
+1. 启动Nacos8848成功：http://localhost:8848/nacos/#/login
+
+   ![image-20221228181627198](SpringCloud-尚硅谷.assets/image-20221228181627198.png)
+
+2. 启动Sentinel8080，`java -jar sentinel-dashboard-1.7.0.jar`
+
+   http://localhost:8080
+
+3. 新建Maven子模块：cloudalibaba-sentinel-service8401
+
+4. POM
+
+   ```xml
+   <dependencies>
+       <!--SpringCloud ailibaba nacos -->
+       <dependency>
+           <groupId>com.alibaba.cloud</groupId>
+           <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
+       </dependency>
+       <!--SpringCloud ailibaba sentinel-datasource-nacos 后续做持久化用到-->
+       <dependency>
+           <groupId>com.alibaba.csp</groupId>
+           <artifactId>sentinel-datasource-nacos</artifactId>
+       </dependency>
+       <!--SpringCloud ailibaba sentinel -->
+       <dependency>
+           <groupId>com.alibaba.cloud</groupId>
+           <artifactId>spring-cloud-starter-alibaba-sentinel</artifactId>
+       </dependency>
+       <!--openfeign-->
+       <dependency>
+           <groupId>org.springframework.cloud</groupId>
+           <artifactId>spring-cloud-starter-openfeign</artifactId>
+       </dependency>
+       <!-- SpringBoot整合Web组件+actuator -->
+       <dependency>
+           <groupId>org.springframework.boot</groupId>
+           <artifactId>spring-boot-starter-web</artifactId>
+       </dependency>
+       <dependency>
+           <groupId>org.springframework.boot</groupId>
+           <artifactId>spring-boot-starter-actuator</artifactId>
+       </dependency>
+       <!--日常通用jar包配置-->
+       <dependency>
+           <groupId>org.springframework.boot</groupId>
+           <artifactId>spring-boot-devtools</artifactId>
+           <scope>runtime</scope>
+           <optional>true</optional>
+       </dependency>
+       <dependency>
+           <groupId>cn.hutool</groupId>
+           <artifactId>hutool-all</artifactId>
+           <version>4.6.3</version>
+       </dependency>
+       <dependency>
+           <groupId>org.projectlombok</groupId>
+           <artifactId>lombok</artifactId>
+           <optional>true</optional>
+       </dependency>
+       <dependency>
+           <groupId>org.springframework.boot</groupId>
+           <artifactId>spring-boot-starter-test</artifactId>
+           <scope>test</scope>
+       </dependency>
+   </dependencies>
+   ```
+
+5. YML
+
+   ```yaml
+   server:
+     port: 8401
+   
+   spring:
+     application:
+       name: cloudalibaba-sentinel-service
+     cloud:
+       nacos:
+         discovery:
+           #Nacos服务注册中心地址
+           server-addr: localhost:8848
+       sentinel:
+         transport:
+           #配置Sentinel dashboard地址
+           dashboard: localhost:8080
+           #默认8719端口，假如被占用会自动从8719开始依次+1扫描,直至找到未被占用的端口
+           port: 8719
+   
+   management:
+     endpoints:
+       web:
+         exposure:
+           include: '*'
+   ```
+
+6. 主启动类
+
+   ```java
+   @EnableDiscoveryClient
+   @SpringBootApplication
+   public class MainApp8401
+   {
+       public static void main(String[] args) {
+           SpringApplication.run(MainApp8401.class, args);
+       }
+   }
+   ```
+
+7. 业务类
+
+   ```java
+   @RestController
+   public class FlowLimitController {
+       @GetMapping("/testA")
+       public String testA() {
+           return "------testA";
+       }
+   
+       @GetMapping("/testB")
+       public String testB() {
+           return "------testB";
+       }
+   }
+   ```
+
+8. 测试
+
+   启动8401微服务后查看sentienl控制台：空空如也，啥都没有
+
+   ![image-20221228182521784](SpringCloud-尚硅谷.assets/image-20221228182521784.png)
+
+   Sentinel采用的懒加载：
+
+   - 执行一次访问即可：`http://localhost:8401/testA`、`http://localhost:8401/testB`
+
+   - 效果：
+
+     ![image-20221228182750481](SpringCloud-尚硅谷.assets/image-20221228182750481.png)
+
+9. 结论：sentinel8080正在监控微服务8401
+
+
+
+### 3 流控规则
+
+#### 3.1 基本介绍
+
+![image-20221228183037666](SpringCloud-尚硅谷.assets/image-20221228183037666.png)
+
+- 资源名：唯一名称，默认请求路径
+- 针对来源：Sentine可以针对调用者进行限流，填写微服务名，默认default(不区分来源)
+- 阈值类型/单机阈值：
+  - QPS(每秒钟的请求数量)：当调用该api的QPS达到阈值的时候，进行限流
+  - 线程数：当调用该api的线程数达到阈值的时候，进行限流
+- 是否集群：不需要集群
+- 流控模式：
+  - 直接：api达到限流条件时，直接限流。
+  - 关联：当关联的资源达到阈值时，就限流自己。
+  - 链路：只记录指定链路上的流量(指定资源从入口资源进来的流量，如果达到阈值，就进行限流)[api级别的针对来源]
+- 流控效果：
+  - 快速失败：直接失败，抛异常。
+  - Warm Up：根据codeFactor(冷加载因子，默认3)的值，从阈值/codeFactor，经过预热时长，才达到设置的QPS阈值
+  - 排队等待：匀速排队，让请求以匀速的速度通过，阈值类型必须设置为QPS，否则无效
+
+
+
+#### 3.2 流控模式
+
+##### 3.2.1 直接(默认)
+
+> 直接QPS
+
+1. 直接QPS ---> 快速失败，系统默认
+
+2. 配置及说明：表示1秒钟内查询1次就是OK，若超过次数1，就直接---快速失败，报默认错误
+
+   ![image-20221228213251143](SpringCloud-尚硅谷.assets/image-20221228213251143.png)
+
+3. 测试
+
+   快速点击访问：`http://localhost:8401/testA`
+
+   结果：Blocked by Sentinel (flow limiting)
+
+4. 思考?
+
+   直接调用默认报错信息，技术方面OK，but是否应该有我们自己的后续处理?
+
+   类似有个fallback的兜底方法？
+
+> 直接线程数
+
+1. 直接线程数
+
+2. 配置及说明：表示1秒钟内只能有一个客户端(线程)访问，若1秒内同时有多个客户端访问，就直接---快速失败，报默认错误。
+
+   ![image-20221228213921336](SpringCloud-尚硅谷.assets/image-20221228213921336.png)
+
+3. 测试
+
+   多端同时点击访问：`http://localhost:8401/testA`
+
+   结果：Blocked by Sentinel (flow limiting)
+
+
+
+##### 3.2.2 关联
+
+1. 是什么？
+
+   当关联的资源达到阈值时，就限流自己
+
+   当与A关联的资源B达到阀值后，就限流A自己
+
+   B惹事，A挂了
+
+2. 配置A
+
+   **设置效果**：当关联资源/testB的qps阀值超过1时，就限流/testA的Rest访问地址，**当关联资源到阈值后限制配置好的资源名**。
+
+   ![image-20221228215339569](SpringCloud-尚硅谷.assets/image-20221228215339569.png)
+
+3. postman模拟并发密集访问testB
+
+   访问testB成功：
+
+   ![image-20221228215534460](SpringCloud-尚硅谷.assets/image-20221228215534460.png)
+
+   将请求保存至工作区的SentinelTest集合当中：
+
+   ![image-20221228215815086](SpringCloud-尚硅谷.assets/image-20221228215815086.png)
+
+   将访问地址添加进新新线程组：
+
+   ![image-20221228220229996](SpringCloud-尚硅谷.assets/image-20221228220229996.png)
+
+   Run；大批量线程高并发访问B，导致A失效了
+
+4. 运行后发现testA挂了
+
+   点击访问`http://localhost:8401/testA`
+
+   结果：Blocked by Sentinel (flow limiting)
+
+
+
+##### 3.2.3 链路
+
+1. 是什么？
+
+   链路流控模式指的是，当从某个接口过来的资源达到限流条件时，开启限流，它的功能有点类似于针对来源配置项，区别在于：针对来源是针对上级微服务，而链路流控是针对上级接口，也就是说它的粒度更细。
+
+   比如在一个微服务中，两个接口都调用了同一个Service中的方法，并且该方法用SentinelResource（用于定义资源）注解标注了，然后对该注解标注的资源（方法）进行配置，则可以选择链路模式。
+
+   ![在这里插入图片描述](SpringCloud-尚硅谷.assets/df2ff3dbb2724fcfb3f6c18e4373aa31.png)
+
+2. POM
+
+   Sentinel1.7.1版本开始（对应Spring Cloud Alibaba的2.1.1.RELEASE) 需要新增依赖
+
+   ```xml
+   <dependency>
+       <groupId>com.alibaba.csp</groupId>
+       <artifactId>sentinel-web-servlet</artifactId>
+   </dependency>
+   ```
+
+3. YML：配置`spring.cloud.sentinel.web-context-unify=false`
+
+   ```yaml
+   spring:
+     application:
+       name: cloudalibaba-sentinel-service
+     cloud:
+       nacos:
+         discovery:
+           #Nacos服务注册中心地址
+           server-addr: localhost:8848
+       sentinel:
+         transport:
+           #配置Sentinel dashboard地址
+           dashboard: localhost:8080
+           #默认8719端口，假如被占用会自动从8719开始依次+1扫描,直至找到未被占用的端口
+           port: 8719
+         web-context-unify: false
+   ```
+
+4. 业务类：
+
+   config
+
+   ```java
+   @Configuration
+   public class FilterContextConfig {
+       @Bean
+       public FilterRegistrationBean sentinelFilterRegistration(){
+           FilterRegistrationBean registration = new FilterRegistrationBean();
+           registration.setFilter(new CommonFilter());
+           registration.addUrlPatterns("/*");
+           // 入口资源关闭聚合
+           registration.addInitParameter(CommonFilter.WEB_CONTEXT_UNIFY, "false");
+           registration.setName("sentinelFilter");
+           registration.setOrder(1);
+           return registration;
+       }
+   }
+   ```
+
+   首先编写一个Service
+
+   ```java
+   @Service
+   public class TestService {
+       // 定义限流资源
+       @SentinelResource("common")
+       public String common() {
+           return "common";
+       }
+   }
+   ```
+
+   然后更改接口调用这个Service方法
+
+   ```java
+   @RestController
+   public class FlowLimitController {
+       @Resource
+       private TestService testService;
+   
+       @GetMapping("/testA")
+       public String testA() {
+           return "--testA：" + testService.common();
+       }
+   
+       @GetMapping("/testB")
+       public String testB() {
+           return "--testB：" + testService.common();
+       }
+   }
+   ```
+
+5. 当我们运行项目，并访问/testA或/testB后就会在sentinel dashbord中看到簇点链路common
+
+   这里要注意不要对/testA或者/testB进行限流规则的配置，要给用SentinelResource注解标注的资源进行配置限流规则，这里的意思为当我们用入口资源访问被SentinelResource注解标注的资源方法时，当超过阈值就会被限流，但是此时实际效果是没有效果。
+
+   这里设置表示访问common这个资源的入口资源是/testA时并且QPS超过1就会触发流控。
+
+   ![image-20221228222621142](SpringCloud-尚硅谷.assets/image-20221228222621142.png)
+
+   ![image-20221228222705425](SpringCloud-尚硅谷.assets/image-20221228222705425.png)
+
+6. 测试：
+
+   不停地访问/testA，会报异常。
+
+   不停地访问/testB，无异常。
+
+
+
+#### 3.3 流控效果
+
+##### 3.3.1 直接---快速失败
+
+- 直接 ---> 快速失败(默认的流控处理)
+
+- 直接失败，抛出异常：Blocked by Sentinel (flow limiting)
+
+- 源码：
+
+  `com.alibaba.csp.sentinel.slots.block.flow.controller.DefaultController`
+
+  ```java
+  //
+  // Source code recreated from a .class file by IntelliJ IDEA
+  // (powered by FernFlower decompiler)
+  //
+  
+  package com.alibaba.csp.sentinel.slots.block.flow.controller;
+  
+  import com.alibaba.csp.sentinel.node.Node;
+  import com.alibaba.csp.sentinel.node.OccupyTimeoutProperty;
+  import com.alibaba.csp.sentinel.slots.block.flow.PriorityWaitException;
+  import com.alibaba.csp.sentinel.slots.block.flow.TrafficShapingController;
+  import com.alibaba.csp.sentinel.util.TimeUtil;
+  
+  public class DefaultController implements TrafficShapingController {
+      private static final int DEFAULT_AVG_USED_TOKENS = 0;
+      private double count;
+      private int grade;
+  
+      public DefaultController(double count, int grade) {
+          this.count = count;
+          this.grade = grade;
+      }
+  
+      public boolean canPass(Node node, int acquireCount) {
+          return this.canPass(node, acquireCount, false);
+      }
+  
+      public boolean canPass(Node node, int acquireCount, boolean prioritized) {
+          int curCount = this.avgUsedTokens(node);
+          if ((double)(curCount + acquireCount) > this.count) {
+              if (prioritized && this.grade == 1) {
+                  long currentTime = TimeUtil.currentTimeMillis();
+                  long waitInMs = node.tryOccupyNext(currentTime, acquireCount, this.count);
+                  if (waitInMs < (long)OccupyTimeoutProperty.getOccupyTimeout()) {
+                      node.addWaitingRequest(currentTime + waitInMs, acquireCount);
+                      node.addOccupiedPass(acquireCount);
+                      this.sleep(waitInMs);
+                      throw new PriorityWaitException(waitInMs);
+                  }
+              }
+  
+              return false;
+          } else {
+              return true;
+          }
+      }
+  
+      private int avgUsedTokens(Node node) {
+          if (node == null) {
+              return 0;
+          } else {
+              return this.grade == 0 ? node.curThreadNum() : (int)node.passQps();
+          }
+      }
+  
+      private void sleep(long timeMillis) {
+          try {
+              Thread.sleep(timeMillis);
+          } catch (InterruptedException var4) {
+          }
+  
+      }
+  }
+  ```
+
+
+
+##### 3.3.2 预热
+
+- 说明
+
+  **公式**：阈值除以coldFactor(默认值为3)，经过预热时长后才会达到阈值
+
+- 官网：
+
+  默认coldFactor为3，即请求 QPS 从 threshold/3 开始，经预热时长逐渐升至设定的 QPS 阈值。
+
+  [限流 冷启动](https://github.com/alibaba/Sentinel/wiki/%E9%99%90%E6%B5%81---%E5%86%B7%E5%90%AF%E5%8A%A8)
+
+- 源码
+
+  `com.alibaba.csp.sentinel.slots.block.flow.controller.WarmUpController`
+
+  ![image-20221228233401795](SpringCloud-尚硅谷.assets/image-20221228233401795.png)
+
+- WarmUp配置
+
+  ![image-20221228233601139](SpringCloud-尚硅谷.assets/image-20221228233601139.png)
+
+- 多次点击`http://localhost:8401/testB`
+
+  刚开始不行，后续慢慢OK
+
+- 应用场景
+
+  如：秒杀系统在开启的瞬间，会有很多流量上来，很有可能把系统打死，预热方式就是把为了保护系统，可慢慢的把流量放进来，慢慢的把阀值增长到设置的阀值。
+
+
+
+##### 3.3.3 排队等待
+
+- 是什么？
+
+  匀速排队，让请求以均匀的速度通过，阀值类型必须设成QPS，否则无效。
+
+- 设置含义：/testA每秒1次请求，超过的话就排队等待，等待的超时时间为20000毫秒。
+
+  ![image-20221228234638280](SpringCloud-尚硅谷.assets/image-20221228234638280.png)
+
+- [官网](https://github.com/alibaba/Sentinel/wiki/%E6%B5%81%E9%87%8F%E6%8E%A7%E5%88%B6)
+
+  匀速排队（`RuleConstant.CONTROL_BEHAVIOR_RATE_LIMITER`）方式会严格控制请求通过的间隔时间，也即是让请求以均匀的速度通过，对应的是漏桶算法。详细文档可以参考[流量控制 - 匀速器模式](https://github.com/alibaba/Sentinel/wiki/流量控制-匀速排队模式)，具体的例子可以参见[PaceFlowDemo](https://github.com/alibaba/Sentinel/blob/master/sentinel-demo/sentinel-demo-basic/src/main/java/com/alibaba/csp/sentinel/demo/flow/PaceFlowDemo.java)。
+
+  该方式的作用如下图所示：
+
+  ![image-20221228234953606](SpringCloud-尚硅谷.assets/image-20221228234953606.png)
+
+  这种方式主要用于处理间隔性突发的流量，例如消息队列。想象一下这样的场景，在某一秒有大量的请求到来，而接下来的几秒则处于空闲状态，我们希望系统能够在接下来的空闲期间逐渐处理这些请求，而不是在第一秒直接拒绝多余的请求。
+
+  > 注意：匀速排队模式暂时不支持 QPS > 1000 的场景。
+
+- 源码：
+
+  `com.alibaba.csp.sentinel.slots.block.flow.controller.RateLimiterController`
+
+  ```java
+  //
+  // Source code recreated from a .class file by IntelliJ IDEA
+  // (powered by FernFlower decompiler)
+  //
+  
+  package com.alibaba.csp.sentinel.slots.block.flow.controller;
+  
+  import com.alibaba.csp.sentinel.node.Node;
+  import com.alibaba.csp.sentinel.slots.block.flow.TrafficShapingController;
+  import com.alibaba.csp.sentinel.util.TimeUtil;
+  import java.util.concurrent.atomic.AtomicLong;
+  
+  public class RateLimiterController implements TrafficShapingController {
+      private final int maxQueueingTimeMs;
+      private final double count;
+      private final AtomicLong latestPassedTime = new AtomicLong(-1L);
+  
+      public RateLimiterController(int timeOut, double count) {
+          this.maxQueueingTimeMs = timeOut;
+          this.count = count;
+      }
+  
+      public boolean canPass(Node node, int acquireCount) {
+          return this.canPass(node, acquireCount, false);
+      }
+  
+      public boolean canPass(Node node, int acquireCount, boolean prioritized) {
+          if (acquireCount <= 0) {
+              return true;
+          } else if (this.count <= 0.0) {
+              return false;
+          } else {
+              long currentTime = TimeUtil.currentTimeMillis();
+              long costTime = Math.round(1.0 * (double)acquireCount / this.count * 1000.0);
+              long expectedTime = costTime + this.latestPassedTime.get();
+              if (expectedTime <= currentTime) {
+                  this.latestPassedTime.set(currentTime);
+                  return true;
+              } else {
+                  long waitTime = costTime + this.latestPassedTime.get() - TimeUtil.currentTimeMillis();
+                  if (waitTime > (long)this.maxQueueingTimeMs) {
+                      return false;
+                  } else {
+                      long oldTime = this.latestPassedTime.addAndGet(costTime);
+  
+                      try {
+                          waitTime = oldTime - TimeUtil.currentTimeMillis();
+                          if (waitTime > (long)this.maxQueueingTimeMs) {
+                              this.latestPassedTime.addAndGet(-costTime);
+                              return false;
+                          } else {
+                              if (waitTime > 0L) {
+                                  Thread.sleep(waitTime);
+                              }
+  
+                              return true;
+                          }
+                      } catch (InterruptedException var15) {
+                          return false;
+                      }
+                  }
+              }
+          }
+      }
+  }
+  ```
+
+- 测试
+
+  ```java
+  @RestController
+  @Slf4j
+  public class FlowLimitController {
+  
+      @GetMapping("/testA")
+      public String testA() {
+          log.info("--testA：");
+          return "--testA：";
+      }
+  }
+  ```
+
+  Postman设置没0.1秒发送一次/testA，发送10次
+
+  结果：测试结果通过
+
+  ![image-20221228235946609](SpringCloud-尚硅谷.assets/image-20221228235946609.png)
+
+
+
+### 4 降级规则
+
+#### 4.1 基本介绍
+
+官网：https://github.com/alibaba/Sentinel/wiki/%E7%86%94%E6%96%AD%E9%99%8D%E7%BA%A7
+
+![image-20221229002207692](SpringCloud-尚硅谷.assets/image-20221229002207692.png)
+
+1. *RT(平均响应时间，秒级)*
+
+   平均响应时间**超出阈值**且**在时间窗口内通过的请求>=5**，两个条件同时满足后触发降级
+
+   窗口期过后关闭断路器
+
+   RT最大4900 (更大的需要通过-Dcsp.sentinel.statistic.max.rt=XXXX才能生效)
+
+2. *异常比列(秒级)*
+
+   **QPS >= 5**且**异常比例(秒级统计)超过阈值时**，触发降级；时间窗口结束后，关闭降级
+
+3. *异常数(分钟级)*
+
+   **异常数(分钟统计)超过阈值时**，触发降级；时间窗口结束后，关闭降级
+
+
+
+进一步说明：
+
+Sentinel 熔断降级会在调用链路中某个资源出现不稳定状态时(例如调用超时或异常比例升高)，对这个资源的调用进行限制，让请求快速失败，避免影响到其它的资源而导致级联错误。
+
+当资源被降级后，在接下来的降级时间窗口之内，对该资源的调用都自动熔断(默认行为是抛出DegradeException)。
+
+
+
+Sentinel的**断路器**是没有半开状态的
+
+半开的状态系统自动去检测是否请求有异常，没有异常就关闭断路器恢复使用，有异常则继续打开断路器不可用。具体可以参考Hystrix。
+
+
+
+#### 4.2 降级策略实战
+
+##### 4.2.1 RT
+
+- 是什么？
+
+  目前使用的是旧的版本，和新版本有较大的差异
+
+  ![image-20221229003057428](SpringCloud-尚硅谷.assets/image-20221229003057428.png)
+
+  ![image-20221229003108870](SpringCloud-尚硅谷.assets/image-20221229003108870.png)
+
+- 测试
+
+  1. 代码
+
+     ```java
+     @GetMapping("/testD")
+     public String testD() {
+         //暂停几秒钟线程
+         try {
+             TimeUnit.SECONDS.sleep(1);
+         } catch (InterruptedException e) {
+             throw new RuntimeException(e);
+         }
+         log.info("testD 测试RT");
+         return "------testD";
+     }
+     ```
+
+  2. 配置
+
+     ![image-20221229003427575](SpringCloud-尚硅谷.assets/image-20221229003427575.png)
+
+  3. jmeter压测：1秒内10个线程同时访问/testD
+
+     ![image-20221229003752161](SpringCloud-尚硅谷.assets/image-20221229003752161.png)
+
+     ![image-20221229003817831](SpringCloud-尚硅谷.assets/image-20221229003817831.png)
+
+  4. 结论
+
+     jmeter压测后，浏览器访问/testD，被降级，给出友好提示
+
+     ![image-20221229004016341](SpringCloud-尚硅谷.assets/image-20221229004016341.png)
+
+
+
+##### 4.2.2 异常比例
+
+- 是什么？
+
+  ![image-20221229004447464](SpringCloud-尚硅谷.assets/image-20221229004447464.png)
+
+  ![image-20221229004454237](SpringCloud-尚硅谷.assets/image-20221229004454237.png)
+
+- 测试
+
+  1. 代码
+
+     ```java
+     @GetMapping("/testD")
+     public String testD() {
+         log.info("testD 异常比例");
+         int age = 10/0;
+         return "------testD";
+     }
+     ```
+
+  2. 配置
+
+     ![image-20221229004744250](SpringCloud-尚硅谷.assets/image-20221229004744250.png)
+
+  3. jmeter压测：1秒内20个线程同时访问/testD
+
+     ![image-20221229004925457](SpringCloud-尚硅谷.assets/image-20221229004925457.png)
+
+  4. 结论：
+
+     按照上述配置，单独访问一次，必然来一次报错一次(`int age  = 10/0`)，调一次错一次；
+
+     ![image-20221229005113533](SpringCloud-尚硅谷.assets/image-20221229005113533.png)
+
+     开启jmeter后，直接高并发发送请求，多次调用达到我们的配置条件了。
+
+     断路器开启(保险丝跳闸)，微服务不可用了，不再报错error而是服务降级了。
+
+     ![image-20221229005158774](SpringCloud-尚硅谷.assets/image-20221229005158774.png)
+
+
+
+##### 4.2.3 异常数
+
+- 是什么？
+
+  **时间窗口一定要大于等于60秒**。
+
+  **异常数是按照分钟统计的**。
+
+  ![image-20221229005243620](SpringCloud-尚硅谷.assets/image-20221229005243620.png)
+
+  ![image-20221229005309991](SpringCloud-尚硅谷.assets/image-20221229005309991.png)
+
+- 测试
+
+  1. 代码
+
+     ```java
+     @GetMapping("/testD")
+     public String testD() {
+         log.info("testD 测试异常数");
+         int age = 10/0;
+         return "------testD";
+     }
+     ```
+
+  2. 配置
+
+     ![image-20221229005525800](SpringCloud-尚硅谷.assets/image-20221229005525800.png)
+
+  3. 测试
+
+     `http://localhost:8401/testD`，第一次访问绝对报错，因为除数不能为零，我们看到error窗口，但是达到5次报错后，进入熔断后降级。
+
+
+
+### 5 热点key限流
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
++++
+
+## 十八、Seata处理分布式事务
 
 
 
