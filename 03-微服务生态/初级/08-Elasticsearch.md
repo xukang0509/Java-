@@ -4626,8 +4626,6 @@ Elasticsearch 提供的首个近似聚合是 cardinality 度量。它提供一�
 
 +++
 
-+++
-
 # Elasticsearch-8.x
 
 +++
