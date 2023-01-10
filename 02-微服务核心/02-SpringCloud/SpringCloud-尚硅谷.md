@@ -356,7 +356,7 @@
      datasource:
        type: com.alibaba.druid.pool.DruidDataSource            # 当前数据源操作类型
        driver-class-name: com.mysql.jdbc.Driver              # mysql驱动包 com.mysql.jdbc.Driver
-       url: jdbc:mysql://localhost:3306/cloud_test?useUnicode=true&characterEncoding=utf-8&useSSL=false
+       url: jdbc:mysql://192.168.88.100:3306/cloud_test?useUnicode=true&characterEncoding=utf-8&useSSL=false
        username: root
        password: 123456
    
@@ -10574,7 +10574,7 @@ sentinel整合ribbon+openFeign+fallback
 
 ### 4 订单/库存/账户业务微服务准备
 
-业务需求：*下订单* ---> *减库存* ---> *扣余额* ---> *改(订单)状态*
+业务需求：*下订单* ---> *减库存* ---> *扣余额* ---> *改(订单)状态*
 
 #### 4.1 订单模块Order-Module
 

@@ -1083,12 +1083,12 @@ https://docs.spring.io/spring-security/reference/servlet/authentication/architec
 
 - 发起认证请求，请求中携带用户名、密码，该请求会被`UsernamePasswordAuthenticationFilter` 拦截
 - 在`UsernamePasswordAuthenticationFilter`的`attemptAuthentication`方法中将请求中用户名和密码，封装为`Authentication`对象，并交给`AuthenticationManager` 进行认证
-- 认证成功，将认证信息存储到 SecurityContextHodler 以及调用记住我等，并回调 `AuthenticationSuccessHandler` 处理
-- 认证失败，清除 SecurityContextHodler 以及 记住我中信息，回调 `AuthenticationFailureHandler` 处理
+- 认证成功，将认证信息存储到 SecurityContextHodler 以及调用**记住我**等，并回调 `AuthenticationSuccessHandler` 处理
+- 认证失败，清除 SecurityContextHodler 以及**记住我**中信息，回调 `AuthenticationFailureHandler` 处理
 
 #### 8.2 三者关系
 
-从上面分析中得知，AuthenticationManager 是认证的核心类，但实际上在底层真正认证时还离不开 ProviderManager 以及  AuthenticationProvider 。他们三者关系是样的呢？
+从上面分析中得知，AuthenticationManager 是认证的核心类，但实际上在底层真正认证时还离不开 ProviderManager 以及  AuthenticationProvider。他们三者关系是样的呢？
 
 - `AuthenticationManager` 是一个认证管理器，它定义了 Spring Security 过滤器要执行认证操作。
 - `ProviderManager` AuthenticationManager接口的实现类。Spring Security 认证时默认使用就是 ProviderManager。
@@ -1098,7 +1098,7 @@ https://docs.spring.io/spring-security/reference/servlet/authentication/architec
 
 ![image-20220118061756972](10-SpringSecurity.assets/image-20220118061756972.png)
 
-​	ProviderManager 是 AuthenticationManager 的唯一实现，也是 Spring Security 默认使用实现。从这里不难看出默认情况下AuthenticationManager 就是一个ProviderManager。
+ProviderManager 是 AuthenticationManager 的唯一实现，也是 Spring Security 默认使用实现。从这里不难看出默认情况下AuthenticationManager 就是一个ProviderManager。
 
 **ProviderManager 与 AuthenticationProvider**
 
@@ -1106,16 +1106,14 @@ https://docs.spring.io/spring-security/reference/servlet/authentication/architec
 
 ![image-20220118060824066](10-SpringSecurity.assets/image-20220118060824066.png)
 
+在 Spring Seourity 中，允许系统同时支持多种不同的认证方式，例如同时支持用户名/密码认证、ReremberMe 认证、手机号码动态认证等，而不同的认证方式对应了不同的 AuthenticationProvider，所以一个完整的认证流程可能由多个 AuthenticationProvider 来提供。
 
+多个 AuthenticationProvider 将组成一个列表，这个列表将由 ProviderManager 代理。换句话说，在ProviderManager 中存在一个 AuthenticationProvider 列表，在ProviderManager 中遍历列表中的每一个 AuthenticationProvider 去执行身份认证，最终得到认证结果。
 
-​	在 Spring Seourity 中，允许系统同时支持多种不同的认证方式，例如同时支持用户名/密码认证、ReremberMe 认证、手机号码动态认证等，而不同的认证方式对应了不同的 AuthenticationProvider，所以一个完整的认证流程可能由多个 AuthenticationProvider 来提供。
-
-​	多个 AuthenticationProvider 将组成一个列表，这个列表将由 ProviderManager 代理。换句话说，在ProviderManager 中存在一个 AuthenticationProvider 列表，在Provider Manager 中遍历列表中的每一个 AuthenticationProvider 去执行身份认证，最终得到认证结果。
-
-​	ProviderManager 本身也可以再配置一个 AuthenticationManager 作为 parent，这样当ProviderManager 认证失败之后，就可以进入到 parent 中再次进行认证。理论上来说，ProviderManager 的 parent 可以是任意类型的 AuthenticationManager，但是通常都是由
+ProviderManager 本身也可以再配置一个 AuthenticationManager 作为 parent，这样当ProviderManager 认证失败之后，就可以进入到 parent 中再次进行认证。理论上来说，ProviderManager 的 parent 可以是任意类型的 AuthenticationManager，但是通常都是由
 ProviderManager 来扮演 parent 的角色，也就是 ProviderManager 是 ProviderManager 的 parent。
 
-​	ProviderManager 本身也可以有多个，多个ProviderManager 共用同一个 parent。有时，一个应用程序有受保护资源的逻辑组（例如，所有符合路径模式的网络资源，如/api/**），每个组可以有自己的专用 AuthenticationManager。通常，每个组都是一个ProviderManager，它们共享一个父级。然后，父级是一种 ` 全局 `资源，作为所有提供者的后备资源。
+ProviderManager 本身也可以有多个，多个ProviderManager 共用同一个 parent。有时，一个应用程序有受保护资源的逻辑组（例如，所有符合路径模式的网络资源，如/api/**），每个组可以有自己的专用 AuthenticationManager。通常，每个组都是一个ProviderManager，它们共享一个父级。然后，父级是一种 ` 全局 `资源，作为所有提供者的后备资源。
 
 根据上面的介绍，我们绘出新的 AuthenticationManager、ProvideManager 和 AuthentictionProvider 关系
 
@@ -1123,13 +1121,13 @@ ProviderManager 来扮演 parent 的角色，也就是 ProviderManager 是 Provi
 
 ![image-20220118061343516](10-SpringSecurity.assets/image-20220118061343516.png)
 
-
-
- 弄清楚认证原理之后我们来看下具体认证时数据源的获取。`默认情况下 AuthenticationProvider  是由 DaoAuthenticationProvider 类来实现认证的，在DaoAuthenticationProvider 认证时又通过 UserDetailsService 完成数据源的校验。`他们之间调用关系如下：
+弄清楚认证原理之后我们来看下具体认证时数据源的获取。`默认情况下 AuthenticationProvider  是由 DaoAuthenticationProvider 类来实现认证的，在DaoAuthenticationProvider 认证时又通过 UserDetailsService 完成数据源的校验。`他们之间调用关系如下：
 
 ![image-20220114163045543](10-SpringSecurity.assets/image-20220114163045543.png)
 
-**总结: AuthenticationManager 是认证管理器，在 Spring Security 中有全局AuthenticationManager，也可以有局部AuthenticationManager。全局的AuthenticationManager用来对全局认证进行处理，局部的AuthenticationManager用来对某些特殊资源认证处理。当然无论是全局认证管理器还是局部认证管理器都是由 ProviderManger 进行实现。 每一个ProviderManger中都代理一个AuthenticationProvider的列表，列表中每一个实现代表一种身份认证方式。认证时底层数据源需要调用 UserDetailService 来实现。**
+*总结*: **AuthenticationManager 是认证管理器，在 Spring Security 中有全局AuthenticationManager，也可以有局部AuthenticationManager。全局的AuthenticationManager用来对全局认证进行处理，局部的AuthenticationManager用来对某些特殊资源认证处理。当然无论是全局认证管理器还是局部认证管理器都是由 ProviderManger 进行实现。每一个ProviderManger中都代理一个AuthenticationProvider的列表，列表中每一个实现代表一种身份认证方式。认证时底层数据源需要调用 UserDetailService 来实现**。
+
+
 
 #### 8.3 配置全局 AuthenticationManager
 
@@ -1151,7 +1149,7 @@ https://spring.io/guides/topicals/spring-security-architecture
 
   **总结**
 
-  1. 默认自动配置创建全局AuthenticationManager 默认找当前项目中是否存在自定义 UserDetailService 实例 自动将当前项目 UserDetailService 实例设置为数据源
+  1. 默认自动配置创建全局AuthenticationManager 默认找当前项目中是否存在自定义 UserDetailService 实例，自动将当前项目 UserDetailService 实例设置为数据源
   2. 默认自动配置创建全局AuthenticationManager 在工厂中使用时直接在代码中注入即可
 
 - 自定义全局 AuthenticationManager
@@ -1170,17 +1168,16 @@ https://spring.io/guides/topicals/spring-security-architecture
 
   **总结**
 
-  1. 一旦通过 configure 方法自定义 AuthenticationManager实现 就回将工厂中自动配置AuthenticationManager 进行覆盖
-  2. 一旦通过 configure 方法自定义 AuthenticationManager实现 需要在实现中指定认证数据源对象 UserDetaiService 实例
-  3. 一旦通过 configure 方法自定义 AuthenticationManager实现 这种方式创建AuthenticationManager对象工厂内部本地一个 AuthenticationManager 对象 不允许在其他自定义组件中进行注入
+  1. 一旦通过 configure 方法自定义 AuthenticationManager实现：就会将工厂中自动配置AuthenticationManager 进行覆盖
+  2. 一旦通过 configure 方法自定义 AuthenticationManager实现：需要在实现中指定认证数据源对象 UserDetaiService 实例
+  3. 一旦通过 configure 方法自定义 AuthenticationManager实现：这种方式创建AuthenticationManager对象工厂内部本地一个 AuthenticationManager 对象，不允许在其他自定义组件中进行注入
 
-- 用来在工厂中暴露自定义AuthenticationManager 实例
+- 用来在工厂中暴露自定义AuthenticationManager实例
 
   ```java
   @Configuration
   public class WebSecurityConfigurer extends WebSecurityConfigurerAdapter {
-    
-      //1.自定义AuthenticationManager  推荐  并没有在工厂中暴露出来
+      //1.自定义 AuthenticationManager 推荐  并没有在工厂中暴露出来
       @Override
       public void configure(AuthenticationManagerBuilder builder) throws Exception {
           System.out.println("自定义AuthenticationManager: " + builder);
@@ -1194,7 +1191,6 @@ https://spring.io/guides/topicals/spring-security-architecture
           return super.authenticationManagerBean();
       }
   }
-  
   ```
 
 #### 8.4 自定义内存数据源
@@ -1202,7 +1198,6 @@ https://spring.io/guides/topicals/spring-security-architecture
 ```java
 @Configuration
 public class WebSecurityConfigurer extends WebSecurityConfigurerAdapter {
-
     @Bean
     public UserDetailsService userDetailsService(){
         InMemoryUserDetailsManager inMemoryUserDetailsManager
@@ -1214,8 +1209,7 @@ public class WebSecurityConfigurer extends WebSecurityConfigurerAdapter {
     }
 
     @Override
-    protected void configure(AuthenticationManagerBuilder auth) 
-      throws Exception {
+    protected void configure(AuthenticationManagerBuilder auth) throws Exception {
         auth.userDetailsService(userDetailsService());
     }  	
 }
@@ -1295,39 +1289,42 @@ public class WebSecurityConfigurer extends WebSecurityConfigurerAdapter {
 - 项目中引入依赖
 
   ```xml
+  <!--mybatis-springboot-->
   <dependency>
-    <groupId>org.mybatis.spring.boot</groupId>
-    <artifactId>mybatis-spring-boot-starter</artifactId>
-    <version>2.2.0</version>
+      <groupId>org.mybatis.spring.boot</groupId>
+      <artifactId>mybatis-spring-boot-starter</artifactId>
+      <version>2.2.0</version>
   </dependency>
+  <!--mysql-->
   <dependency>
-    <groupId>mysql</groupId>
-    <artifactId>mysql-connector-java</artifactId>
-    <version>5.1.38</version>
+      <groupId>mysql</groupId>
+      <artifactId>mysql-connector-java</artifactId>
+      <version>5.1.38</version>
   </dependency>
+  <!--druid-->
   <dependency>
-    <groupId>com.alibaba</groupId>
-    <artifactId>druid</artifactId>
-    <version>1.2.7</version>
+      <groupId>com.alibaba</groupId>
+      <artifactId>druid</artifactId>
+      <version>1.2.8</version>
   </dependency>
   ```
 
 - 配置 springboot 配置文件
 
   ```properties
-  # datasource
+  # 配置数据源 datasource
   spring.datasource.type=com.alibaba.druid.pool.DruidDataSource
   spring.datasource.driver-class-name=com.mysql.jdbc.Driver
-  spring.datasource.url=jdbc:mysql://localhost:3306/security?characterEncoding=UTF-8&useSSL=false
+  spring.datasource.url=jdbc:mysql://192.168.88.100:3306/security?useUnicode=true&characterEncoding=utf-8&useSSL=false
   spring.datasource.username=root
-  spring.datasource.password=root
+  spring.datasource.password=123456
   
   # mybatis
-  mybatis.mapper-locations=classpath:com/baizhi/mapper/*.xml
-  mybatis.type-aliases-package=com.baizhi.entity
+  mybatis.mapper-locations=classpath:com/shanhai/mapper/*.xml
+  mybatis.type-aliases-package=com.shanhai.entity
   
-  # log
-  logging.level.com.baizhi=debug
+  # log 日志处理 为了展示mybatis运行sql语句
+  logging.level.com.shanhai=debug
   ```
 
 - 创建 entity
@@ -1335,7 +1332,7 @@ public class WebSecurityConfigurer extends WebSecurityConfigurerAdapter {
   - 创建 user 对象
 
     ```java
-    public class User  implements UserDetails {
+    public class User implements UserDetails {
         private Integer id;
         private String username;
         private String password;
@@ -1381,7 +1378,7 @@ public class WebSecurityConfigurer extends WebSecurityConfigurerAdapter {
         public boolean isEnabled() {
             return enabled;
         }
-    		//get/set....
+    	//get/set....
     }
     ```
 
@@ -1392,7 +1389,7 @@ public class WebSecurityConfigurer extends WebSecurityConfigurerAdapter {
         private Integer id;
         private String name;
         private String nameZh;
-      	//get set..
+      	//get set ...
     }
     ```
 
@@ -1401,22 +1398,29 @@ public class WebSecurityConfigurer extends WebSecurityConfigurerAdapter {
   ```java
   @Mapper
   public interface UserDao {
-      //根据用户名查询用户
+      /**
+       * 提供根据用户名返回用户的方法
+       */
       User loadUserByUsername(String username);
-    	
-    	//根据用户id查询角色
-    	List<Role> getRolesByUid(Integer uid);
+  
+      /**
+       * 提供根据用户id，查询用户角色信息的方法
+       */
+      List<Role> getRolesByUid(Integer uid);
   }
   ```
 
 - 创建 UserMapper 实现
 
   ```xml
-  <?xml version="1.0" encoding="UTF-8"?>
-  <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-  <mapper namespace="com.baizhi.dao.UserDao">
-      <!--查询单个-->
-      <select id="loadUserByUsername" resultType="User">
+  <?xml version="1.0" encoding="UTF-8" ?>
+  <!DOCTYPE mapper
+          PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+          "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+  <mapper namespace="com.shanhai.dao.UserDao">
+  
+      <!-- 根据用户名查询用户方法 -->
+      <select id="loadUserByUsername" resultType="com.shanhai.entity.User">
           select id,
                  username,
                  password,
@@ -1428,15 +1432,15 @@ public class WebSecurityConfigurer extends WebSecurityConfigurerAdapter {
           where username = #{username}
       </select>
   
-      <!--查询指定行数据-->
-      <select id="getRolesByUid" resultType="Role">
+      <!-- 根据uid查询角色信息 -->
+      <select id="getRolesByUid" resultType="com.shanhai.entity.Role">
           select r.id,
                  r.name,
                  r.name_zh nameZh
-          from role r,
-               user_role ur
-          where r.id = ur.rid
-            and ur.uid = #{uid}
+          from   role r,
+                 user_role ur
+          where  r.id = ur.rid
+          and    ur.uid = #{uid}
       </select>
   </mapper>
   ```
@@ -1445,20 +1449,24 @@ public class WebSecurityConfigurer extends WebSecurityConfigurerAdapter {
 
   ```java
   @Component
-  public class MyUserDetailService implements UserDetailsService {
-  
-      private  final UserDao userDao;
+  public class MyUserDetailsService implements UserDetailsService {
+      private final UserDao userDao;
   
       @Autowired
-      public MyUserDetailService(UserDao userDao) {
+      public MyUserDetailsService(UserDao userDao) {
           this.userDao = userDao;
       }
   
       @Override
       public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+          //1.查询用户
           User user = userDao.loadUserByUsername(username);
-          if(ObjectUtils.isEmpty(user))throw new RuntimeException("用户不存在");
-          user.setRoles(userDao.getRolesByUid(user.getId()));
+          if (ObjectUtils.isEmpty(user)) {
+              throw new UsernameNotFoundException("用户名不正确...");
+          }
+          //2.查询权限信息
+          List<Role> roles = userDao.getRolesByUid(user.getId());
+          user.setRoles(roles);
           return user;
       }
   }
@@ -1512,9 +1520,13 @@ public class KaptchaConfig {
     @Bean
     public Producer kaptcha() {
         Properties properties = new Properties();
+        // 验证码宽度
         properties.setProperty("kaptcha.image.width", "150");
+        // 验证码高度
         properties.setProperty("kaptcha.image.height", "50");
+        // 验证码字符串
         properties.setProperty("kaptcha.textproducer.char.string", "0123456789");
+        // 验证码长度
         properties.setProperty("kaptcha.textproducer.char.length", "4");
         Config config = new Config(properties);
         DefaultKaptcha defaultKaptcha = new DefaultKaptcha();
@@ -1530,20 +1542,24 @@ public class KaptchaConfig {
 
   ```java
   @Controller
-  public class KaptchaController {
+  public class VerifyCodeController {
       private final Producer producer;
   
       @Autowired
-      public KaptchaController(Producer producer) {
+      public VerifyCodeController(Producer producer) {
           this.producer = producer;
       }
   
-      @GetMapping("/vc.jpg")
-      public void getVerifyCode(HttpServletResponse response, HttpSession session) throws IOException {
-          response.setContentType("image/png");
-          String code = producer.createText();
-          session.setAttribute("kaptcha", code);//可以更换成 redis 实现
-          BufferedImage bi = producer.createImage(code);
+      @RequestMapping("/vc.jpg")
+      public void verifyCode(HttpServletResponse response, HttpSession session) throws IOException {
+          // 1.生成验证码
+          String verifyCode = producer.createText();
+          // 2.保存到session中
+          session.setAttribute("kaptcha", verifyCode);
+          // 3.生成图片
+          BufferedImage bi = producer.createImage(verifyCode);
+          // 4.响应图片
+          response.setContentType(MediaType.IMAGE_PNG_VALUE);
           ServletOutputStream os = response.getOutputStream();
           ImageIO.write(bi, "jpg", os);
       }
@@ -1553,8 +1569,10 @@ public class KaptchaConfig {
 - 自定义验证码异常类
 
   ```java
+  /**
+   * 自定义验证码认证异常
+   */
   public class KaptchaNotMatchException extends AuthenticationException {
-  
       public KaptchaNotMatchException(String msg) {
           super(msg);
       }
@@ -1569,32 +1587,33 @@ public class KaptchaConfig {
 
   ```java
   public class KaptchaFilter extends UsernamePasswordAuthenticationFilter {
+      private static final String FORM_KAPTCHA_KEY = "kaptcha"; //默认值
   
-      public static final String KAPTCHA_KEY = "kaptcha";//默认值
-      private String kaptcha = KAPTCHA_KEY;
+      private String kaptchaParameter = FORM_KAPTCHA_KEY;
   
-      public String getKaptcha() {
-          return kaptcha;
+      public String getKaptchaParameter() {
+          return kaptchaParameter;
       }
   
-      public void setKaptcha(String kaptcha) {
-          this.kaptcha = kaptcha;
+      public void setKaptchaParameter(String kaptchaParameter) {
+          this.kaptchaParameter = kaptchaParameter;
       }
   
       @Override
       public Authentication attemptAuthentication(HttpServletRequest request, HttpServletResponse response) throws AuthenticationException {
-          //1.判断是否是 post 方式
-          if (request.getMethod().equals("POST")) {
+          // 0.判断是否是 post 方式
+          if (!request.getMethod().equals("POST")) {
               throw new AuthenticationServiceException("Authentication method not supported: " + request.getMethod());
           }
-          //2.获取验证码
-          String kaptcha = request.getParameter(getKaptcha());
-          String sessionKaptcha = (String) request.getSession().getAttribute("kaptcha");
-          if (!ObjectUtils.isEmpty(kaptcha) && !ObjectUtils.isEmpty(sessionKaptcha) &&
-                  kaptcha.equalsIgnoreCase(sessionKaptcha)) {
+          // 1.从请求中获取验证码
+          String verifyCode = request.getParameter(getKaptchaParameter());
+          // 2.与session中验证码进行比较
+          String sessionVerifyCode = (String) request.getSession().getAttribute("kaptcha");
+          if (!ObjectUtils.isEmpty(verifyCode) && !ObjectUtils.isEmpty(sessionVerifyCode)
+                  && verifyCode.equalsIgnoreCase(sessionVerifyCode)) {
               return super.attemptAuthentication(request, response);
           }
-          throw new KaptchaNotMatchException("验证码输入错误!");
+          throw new KaptchaNotMatchException("验证码不匹配！");
       }
   }
   ```
@@ -1672,24 +1691,25 @@ public class KaptchaConfig {
 
   ```java
   @RestController
-  public class KaptchaController {
+  public class VerifyCodeController {
       private final Producer producer;
   
       @Autowired
-      public KaptchaController(Producer producer) {
+      public VerifyCodeController(Producer producer) {
           this.producer = producer;
       }
   
-      @GetMapping("/vc.png")
+      @GetMapping("/vc.jpg")
       public String getVerifyCode(HttpSession session) throws IOException {
-          //1.生成验证码
-          String code = producer.createText();
-          session.setAttribute("kaptcha", code);//可以更换成 redis 实现
-          BufferedImage bi = producer.createImage(code);
-          //2.写入内存
+          // 1.生成验证码
+          String text = producer.createText();
+          // 2.放入 session 可用redis实现
+          session.setAttribute("kaptcha", text);
+          // 3.生成图片
+          BufferedImage image = producer.createImage(text);
           FastByteArrayOutputStream fos = new FastByteArrayOutputStream();
-          ImageIO.write(bi, "png", fos);
-          //3.生成 base64
+          ImageIO.write(image, "jpg", fos);
+          // 4.返回 base64
           return Base64.encodeBase64String(fos.toByteArray());
       }
   }
@@ -1698,8 +1718,10 @@ public class KaptchaConfig {
 - 定义验证码异常类
 
   ```java
+  /**
+   * 自定义验证码认证异常
+   */
   public class KaptchaNotMatchException extends AuthenticationException {
-  
       public KaptchaNotMatchException(String msg) {
           super(msg);
       }
@@ -1713,10 +1735,9 @@ public class KaptchaConfig {
 - 在自定义LoginKaptchaFilter中加入验证码验证
 
   ```java
-  //自定义 filter
+  // 自定义filter
   public class LoginKaptchaFilter extends UsernamePasswordAuthenticationFilter {
-  
-      public static final String FORM_KAPTCHA_KEY = "kaptcha";
+      private static final String FORM_KAPTCHA_KEY = "kaptcha";
   
       private String kaptchaParameter = FORM_KAPTCHA_KEY;
   
@@ -1734,24 +1755,25 @@ public class KaptchaConfig {
               throw new AuthenticationServiceException("Authentication method not supported: " + request.getMethod());
           }
           try {
-              //1.获取请求数据
               Map<String, String> userInfo = new ObjectMapper().readValue(request.getInputStream(), Map.class);
-              String kaptcha = userInfo.get(getKaptchaParameter());//用来获取数据中验证码
-              String username = userInfo.get(getUsernameParameter());//用来接收用户名
-              String password = userInfo.get(getPasswordParameter());//用来接收密码
-              //2.获取 session 中验证码
+              // 1.获取请求数据
+              String verifyCode = userInfo.get(getKaptchaParameter()); // 用来获取数据中的验证码
+              String userName = userInfo.get(getUsernameParameter()); // 用来接收用户名
+              String password = userInfo.get(getPasswordParameter()); // 用来接收密码
+  
+              // 2.获取session中验证码
               String sessionVerifyCode = (String) request.getSession().getAttribute("kaptcha");
-              if (!ObjectUtils.isEmpty(kaptcha) && !ObjectUtils.isEmpty(sessionVerifyCode) &&
-                      kaptcha.equalsIgnoreCase(sessionVerifyCode)) {
-                  //3.获取用户名 和密码认证
-                  UsernamePasswordAuthenticationToken authRequest = new UsernamePasswordAuthenticationToken(username, password);
+              if (!ObjectUtils.isEmpty(verifyCode) && !ObjectUtils.isEmpty(sessionVerifyCode)
+                      && verifyCode.equalsIgnoreCase(sessionVerifyCode)) {
+                  // 3.用户名和密码验证
+                  UsernamePasswordAuthenticationToken authRequest = new UsernamePasswordAuthenticationToken(userName, password);
                   setDetails(request, authRequest);
                   return this.getAuthenticationManager().authenticate(authRequest);
               }
           } catch (IOException e) {
-              e.printStackTrace();
+              throw new RuntimeException(e);
           }
-          throw new KaptchaNotMatchException("验证码不匹配!");
+          throw new KaptchaNotMatchException("验证码不匹配！");
       }
   }
   ```
@@ -1761,13 +1783,12 @@ public class KaptchaConfig {
   ```java
   @Configuration
   public class SecurityConfig extends WebSecurityConfigurerAdapter {
-  
-      //自定义内存数据源
+      // 自定义内存数据源
       @Bean
       public UserDetailsService userDetailsService() {
-          InMemoryUserDetailsManager inMemoryUserDetailsManager = new InMemoryUserDetailsManager();
-          inMemoryUserDetailsManager.createUser(User.withUsername("root").password("{noop}123").roles("admin").build());
-          return inMemoryUserDetailsManager;
+          InMemoryUserDetailsManager imd = new InMemoryUserDetailsManager();
+          imd.createUser(User.withUsername("root").password("{noop}123").roles("admin").build());
+          return imd;
       }
   
       @Override
@@ -1781,38 +1802,40 @@ public class KaptchaConfig {
           return super.authenticationManagerBean();
       }
   
-      //配置
+      // 配置自定义 filter
       @Bean
       public LoginKaptchaFilter loginKaptchaFilter() throws Exception {
-          LoginKaptchaFilter loginKaptchaFilter = new LoginKaptchaFilter();
-          //1.认证 url
-          loginKaptchaFilter.setFilterProcessesUrl("/doLogin");
-          //2.认证 接收参数
-          loginKaptchaFilter.setUsernameParameter("uname");
-          loginKaptchaFilter.setPasswordParameter("passwd");
-          loginKaptchaFilter.setKaptchaParameter("kaptcha");
-          //3.指定认证管理器
-          loginKaptchaFilter.setAuthenticationManager(authenticationManagerBean());
-          //4.指定成功时处理
-          loginKaptchaFilter.setAuthenticationSuccessHandler((req, resp, authentication) -> {
+          LoginKaptchaFilter filter = new LoginKaptchaFilter();
+          // 认证 url
+          filter.setFilterProcessesUrl("/doLogin");
+          // 认证 接收参数
+          filter.setUsernameParameter("uname");
+          filter.setPasswordParameter("passwd");
+          filter.setKaptchaParameter("kaptcha");
+          // 指定认证管理器
+          filter.setAuthenticationManager(authenticationManagerBean());
+          // 指定成功时的处理
+          filter.setAuthenticationSuccessHandler((req, resp, auth) -> {
               Map<String, Object> result = new HashMap<String, Object>();
               result.put("msg", "登录成功");
-              result.put("用户信息", authentication.getPrincipal());
+              result.put("status", 200);
+              result.put("用户信息", auth.getPrincipal());
               resp.setContentType("application/json;charset=UTF-8");
               resp.setStatus(HttpStatus.OK.value());
               String s = new ObjectMapper().writeValueAsString(result);
               resp.getWriter().println(s);
           });
-          //5.认证失败处理
-          loginKaptchaFilter.setAuthenticationFailureHandler((req, resp, ex) -> {
+          // 指定失败时的处理
+          filter.setAuthenticationFailureHandler((req, resp, ex) -> {
               Map<String, Object> result = new HashMap<String, Object>();
               result.put("msg", "登录失败: " + ex.getMessage());
-              resp.setStatus(HttpStatus.INTERNAL_SERVER_ERROR.value());
+              result.put("status", 500);
               resp.setContentType("application/json;charset=UTF-8");
+              resp.setStatus(HttpStatus.INTERNAL_SERVER_ERROR.value());
               String s = new ObjectMapper().writeValueAsString(result);
               resp.getWriter().println(s);
           });
-          return loginKaptchaFilter;
+          return filter;
       }
   
       @Override
@@ -1825,9 +1848,9 @@ public class KaptchaConfig {
                   .and()
                   .exceptionHandling()
                   .authenticationEntryPoint((req, resp, ex) -> {
-                      resp.setContentType("application/json;charset=UTF-8");
+                      resp.setContentType(MediaType.APPLICATION_JSON_UTF8_VALUE);
                       resp.setStatus(HttpStatus.UNAUTHORIZED.value());
-                      resp.getWriter().println("必须认证之后才能访问!");
+                      resp.getWriter().write("必须认证之后才能访问");
                   })
                   .and()
                   .logout()
@@ -1836,7 +1859,7 @@ public class KaptchaConfig {
   
           http.addFilterAt(loginKaptchaFilter(), UsernamePasswordAuthenticationFilter.class);
       }
-  
+  }
   ```
 
 - 测试验证
@@ -1850,99 +1873,1112 @@ public class KaptchaConfig {
 - PasswordEncoder 详解
 - 优雅使用加密
 
+### 1 简介
 
+#### 1.1 加密意义
 
+2011 年12月21 日，有人在网络上公开了一个包含600万个 CSDN 用户资料的数据库，数据全部为明文储存，包含用户名、密码以及注册邮箱。事件发生后 CSDN 在微博、官方网站等渠道发出了声明，解释说此数据库系 2009 年备份所用，因不明原因泄漏，已经向警方报案，后又在官网发出了公开道歉信。在接下来的十多天里，金山、网易、京东、当当、新浪等多家公司被卷入到这次事件中。整个事件中最触目惊心的莫过于 CSDN 把用户密码明文存储，由于很多用户是多个网站共用一个密码，因此一个网站密码泄漏就会造成很大的安全隐患。由于有了这么多前车之鉴，我们现在做系统时，密码都要加密处理。
 
+在前面的案例中，凡是涉及密码的地方，我们都采用明文存储，在实际项目中这肯定是不可取的，因为这会带来极高的安全风险。在企业级应用中，密码不仅需要加密，还需要加`盐`，最大程度地保证密码安全。
 
 
 
+#### 1.2 常见方案
 
+##### 1.2.1 Hash算法
 
+最早我们使用类似 SHA-256、SHA-512、MD5等这样的单向 Hash 算法。用户注册成功后，保存在数据库中不再是用户的明文密码，而是经过 SHA-256 加密计算的一个字行串，当用户进行登录时，用户输入的明文密码用 SHA-256 进行加密，加密完成之后，再和存储在数据库中的密码进行比对，进而确定用户登录信息是否有效。如果系统遭遇攻击，最多也只是存储在数据库中的密文被泄漏。
 
+这样就绝对安全了吗？由于彩虹表这种攻击方式的存在以及随着计算机硬件的发展，每秒执行数十亿次 HASH 计算己经变得轻轻松松，这意味着即使给密码加密加盐也不再安全。
 
+参考: [彩虹表](https://baike.baidu.com/item/%E5%BD%A9%E8%99%B9%E8%A1%A8/689313?fr=aladdin)
 
 
 
+##### 1.2.2 单向自适应函数
 
+在Spring Security 中，我们现在是用一种自适应单向函数(Adaptive One-way Functions)来处理密码问题，这种自适应单向函数在进行密码匹配时，会有意占用大量系统资源（例如CPU、内存等），这样可以增加恶意用户攻击系统的难度。在Spring Securiy中，开发者可以通过 bcrypt、PBKDF2、sCrypt 以及 argon2 来体验这种自适应单向函数加密。由于自适应单向函数有意占用大量系统资源，因此每个登录认证请求都会大大降低应用程序的性能，但是 Spring Secuity 不会采取任何措施来提高密码验证速度，因为它正是通过这种方式来增强系统的安全性。
 
+参考 1: https://byronhe.gitbooks.io/libsodium/content/password_hashing/
 
+参考 2: https://github.com/xitu/gold-miner/blob/master/TODO1/password-hashing-pbkdf2-scrypt-bcrypt-and-argon2.md
 
+- **BCryptPasswordEncoder**
 
+  BCryptPasswordEncoder 使用 bcrypt 算法对密码进行加密，为了提高密码的安全性，bcrypt算法故意降低运行速度，以增强密码破解的难度。同时 BCryptP asswordEncoder “为自己带盐”开发者不需要额外维护一个“盐” 字段，使用 BCryptPasswordEncoder 加密后的字符串就已经“带盐”了，即使相同的明文每次生成的加密字符串都不相同。
 
+- **Argon2PasswordEncoder**
 
+  Argon2PasswordEncoder 使用 Argon2 算法对密码进行加密，Argon2 曾在 Password Hashing Competition 竞赛中获胜。为了解决在定制硬件上密码容易被破解的问题，Argon2也是故意降低运算速度，同时需要大量内存，以确保系统的安全性。
 
+- **Pbkdf2PasswordEncoder**
 
+  Pbkdf2PasswordEncoder 使用 PBKDF2 算法对密码进行加密，和前面几种类似，PBKDF2算法也是一种故意降低运算速度的算法，当需要 FIPS (Federal Information Processing Standard,美国联邦信息处理标准）认证时，PBKDF2 算法是一个很好的选择。
 
+- **SCryptPasswordEncoder**
 
+  SCryptPasswordEncoder 使用 scrypt 算法对密码进行加密，和前面的几种类似，serypt 也是一种故意降低运算速度的算法，而且需要大量内存。
 
 
 
+### 2 PasswordEncoder
 
+通过对认证流程源码分析得知，实际密码比较是由PasswordEncoder完成的，因此只需要使用PasswordEncoder不同实现就可以实现不同方式加密。
 
+```java
+public interface PasswordEncoder {
+	String encode(CharSequence rawPassword);
+    
+	boolean matches(CharSequence rawPassword, String encodedPassword);
+	
+    default boolean upgradeEncoding(String encodedPassword) {
+		return false;
+	}
+}
+```
 
+- encode 用来进行明文加密的
+- matches 用来比较密码的方法
+- upgradeEncoding 用来给密码进行升级的方法
 
+默认提供加密算法如下:
 
+![image-20220127162622771](10-SpringSecurity.assets/image-20220127162622771.png)
 
+![image-20220127162759461](10-SpringSecurity.assets/image-20220127162759461.png)
 
+### 3 DelegatingPasswordEncoder
 
+根据上面 PasswordEncoder的介绍，可能会以为 Spring security 中默认的密码加密方案应该是四种自适应单向加密函数中的一种，其实不然，在 spring Security 5.0之后，默认的密码加密方案其实是 DelegatingPasswordEncoder。从名字上来看，DelegatingPaswordEncoder 是一个代理类，而并非一种全新的密码加密方案，DeleggtinePasswordEncoder 主要用来代理上面介绍的不同的密码加密方案。为什么采用 DelegatingPasswordEncoder 而不是某一个具体加密方式作为默认的密码加密方案呢？主要考虑了如下两方面的因素：
 
+- 兼容性：使用 DelegatingPasswrordEncoder 可以帮助许多使用旧密码加密方式的系统顺利迁移到 Spring security 中，它允许在同一个系统中同时存在多种不同的密码加密方案。
 
+- 便捷性：密码存储的最佳方案不可能一直不变，如果使用 DelegatingPasswordEncoder 作为默认的密码加密方案，当需要修改加密方案时，只需要修改很小一部分代码就可以实现。
 
 
 
+#### 3.1 DelegatingPasswordEncoder源码
 
+```java
+public class DelegatingPasswordEncoder implements PasswordEncoder {
 
+   private static final String PREFIX = "{";
 
+   private static final String SUFFIX = "}";
 
+   private final String idForEncode;
 
+   private final PasswordEncoder passwordEncoderForEncode;
 
+   private final Map<String, PasswordEncoder> idToPasswordEncoder;
 
+   private PasswordEncoder defaultPasswordEncoderForMatches = new UnmappedIdPasswordEncoder();
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+   /**
+    * Creates a new instance
+    * @param idForEncode the id used to lookup which {@link PasswordEncoder} should be
+    * used for {@link #encode(CharSequence)}
+    * @param idToPasswordEncoder a Map of id to {@link PasswordEncoder} used to determine
+    * which {@link PasswordEncoder} should be used for
+    * {@link #matches(CharSequence, String)}
+    */
+   public DelegatingPasswordEncoder(String idForEncode, Map<String, PasswordEncoder> idToPasswordEncoder) {
+      if (idForEncode == null) {
+         throw new IllegalArgumentException("idForEncode cannot be null");
+      }
+      if (!idToPasswordEncoder.containsKey(idForEncode)) {
+         throw new IllegalArgumentException(
+               "idForEncode " + idForEncode + "is not found in idToPasswordEncoder " + idToPasswordEncoder);
+      }
+      for (String id : idToPasswordEncoder.keySet()) {
+         if (id == null) {
+            continue;
+         }
+         if (id.contains(PREFIX)) {
+            throw new IllegalArgumentException("id " + id + " cannot contain " + PREFIX);
+         }
+         if (id.contains(SUFFIX)) {
+            throw new IllegalArgumentException("id " + id + " cannot contain " + SUFFIX);
+         }
+      }
+      this.idForEncode = idForEncode;
+      this.passwordEncoderForEncode = idToPasswordEncoder.get(idForEncode);
+      this.idToPasswordEncoder = new HashMap<>(idToPasswordEncoder);
+   }
+
+   /**
+    * Sets the {@link PasswordEncoder} to delegate to for
+    * {@link #matches(CharSequence, String)} if the id is not mapped to a
+    * {@link PasswordEncoder}.
+    *
+    * <p>
+    * The encodedPassword provided will be the full password passed in including the
+    * {"id"} portion.* For example, if the password of "{notmapped}foobar" was used, the
+    * "id" would be "notmapped" and the encodedPassword passed into the
+    * {@link PasswordEncoder} would be "{notmapped}foobar".
+    * </p>
+    * @param defaultPasswordEncoderForMatches the encoder to use. The default is to throw
+    * an {@link IllegalArgumentException}
+    */
+   public void setDefaultPasswordEncoderForMatches(PasswordEncoder defaultPasswordEncoderForMatches) {
+      if (defaultPasswordEncoderForMatches == null) {
+         throw new IllegalArgumentException("defaultPasswordEncoderForMatches cannot be null");
+      }
+      this.defaultPasswordEncoderForMatches = defaultPasswordEncoderForMatches;
+   }
+
+   @Override
+   public String encode(CharSequence rawPassword) {
+      return PREFIX + this.idForEncode + SUFFIX + this.passwordEncoderForEncode.encode(rawPassword);
+   }
+
+   @Override
+   public boolean matches(CharSequence rawPassword, String prefixEncodedPassword) {
+      if (rawPassword == null && prefixEncodedPassword == null) {
+         return true;
+      }
+      String id = extractId(prefixEncodedPassword);
+      PasswordEncoder delegate = this.idToPasswordEncoder.get(id);
+      if (delegate == null) {
+         return this.defaultPasswordEncoderForMatches.matches(rawPassword, prefixEncodedPassword);
+      }
+      String encodedPassword = extractEncodedPassword(prefixEncodedPassword);
+      return delegate.matches(rawPassword, encodedPassword);
+   }
+
+   private String extractId(String prefixEncodedPassword) {
+      if (prefixEncodedPassword == null) {
+         return null;
+      }
+      int start = prefixEncodedPassword.indexOf(PREFIX);
+      if (start != 0) {
+         return null;
+      }
+      int end = prefixEncodedPassword.indexOf(SUFFIX, start);
+      if (end < 0) {
+         return null;
+      }
+      return prefixEncodedPassword.substring(start + 1, end);
+   }
+
+   @Override
+   public boolean upgradeEncoding(String prefixEncodedPassword) {
+      String id = extractId(prefixEncodedPassword);
+      if (!this.idForEncode.equalsIgnoreCase(id)) {
+         return true;
+      }
+      else {
+         String encodedPassword = extractEncodedPassword(prefixEncodedPassword);
+         return this.idToPasswordEncoder.get(id).upgradeEncoding(encodedPassword);
+      }
+   }
+
+   private String extractEncodedPassword(String prefixEncodedPassword) {
+      int start = prefixEncodedPassword.indexOf(SUFFIX);
+      return prefixEncodedPassword.substring(start + 1);
+   }
+
+   /**
+    * Default {@link PasswordEncoder} that throws an exception telling that a suitable
+    * {@link PasswordEncoder} for the id could not be found.
+    */
+   private class UnmappedIdPasswordEncoder implements PasswordEncoder {
+
+      @Override
+      public String encode(CharSequence rawPassword) {
+         throw new UnsupportedOperationException("encode is not supported");
+      }
+
+      @Override
+      public boolean matches(CharSequence rawPassword, String prefixEncodedPassword) {
+         String id = extractId(prefixEncodedPassword);
+         throw new IllegalArgumentException("There is no PasswordEncoder mapped for the id \"" + id + "\"");
+      }
+
+   }
+
+}
+```
+
+- encode 用来进行明文加密的
+- matches 用来比较密码的方法
+- upgradeEncoding 用来给密码进行升级的方法
+
+
+
+#### 3.2 PasswordEncoderFactories源码
+
+```java
+public final class PasswordEncoderFactories {
+
+   private PasswordEncoderFactories() {
+   }
+    
+   @SuppressWarnings("deprecation")
+   public static PasswordEncoder createDelegatingPasswordEncoder() {
+      String encodingId = "bcrypt";
+      Map<String, PasswordEncoder> encoders = new HashMap<>();
+      encoders.put(encodingId, new BCryptPasswordEncoder());
+      encoders.put("ldap", new org.springframework.security.crypto.password.LdapShaPasswordEncoder());
+      encoders.put("MD4", new org.springframework.security.crypto.password.Md4PasswordEncoder());
+      encoders.put("MD5", new org.springframework.security.crypto.password.MessageDigestPasswordEncoder("MD5"));
+      encoders.put("noop", org.springframework.security.crypto.password.NoOpPasswordEncoder.getInstance());
+      encoders.put("pbkdf2", new Pbkdf2PasswordEncoder());
+      encoders.put("scrypt", new SCryptPasswordEncoder());
+      encoders.put("SHA-1", new org.springframework.security.crypto.password.MessageDigestPasswordEncoder("SHA-1"));
+      encoders.put("SHA-256",
+            new org.springframework.security.crypto.password.MessageDigestPasswordEncoder("SHA-256"));
+      encoders.put("sha256", new org.springframework.security.crypto.password.StandardPasswordEncoder());
+      encoders.put("argon2", new Argon2PasswordEncoder());
+      return new DelegatingPasswordEncoder(encodingId, encoders);
+   }
+
+}
+```
+
+
+
+### 4 如何使用 PasswordEncoder
+
+- 查看WebSecurityConfigurerAdapter类中源码
+
+  ```java
+  static class LazyPasswordEncoder implements PasswordEncoder {
+  
+     private ApplicationContext applicationContext;
+  
+     private PasswordEncoder passwordEncoder;
+  
+     LazyPasswordEncoder(ApplicationContext applicationContext) {
+        this.applicationContext = applicationContext;
+     }
+  
+     @Override
+     public String encode(CharSequence rawPassword) {
+        return getPasswordEncoder().encode(rawPassword);
+     }
+  
+     @Override
+     public boolean matches(CharSequence rawPassword, String encodedPassword) {
+        return getPasswordEncoder().matches(rawPassword, encodedPassword);
+     }
+  
+     @Override
+     public boolean upgradeEncoding(String encodedPassword) {
+        return getPasswordEncoder().upgradeEncoding(encodedPassword);
+     }
+  
+     private PasswordEncoder getPasswordEncoder() {
+        if (this.passwordEncoder != null) {
+           return this.passwordEncoder;
+        }
+        PasswordEncoder passwordEncoder = getBeanOrNull(PasswordEncoder.class);
+        if (passwordEncoder == null) {
+           passwordEncoder = PasswordEncoderFactories.createDelegatingPasswordEncoder();
+        }
+        this.passwordEncoder = passwordEncoder;
+        return passwordEncoder;
+     }
+  
+     private <T> T getBeanOrNull(Class<T> type) {
+        try {
+           return this.applicationContext.getBean(type);
+        }
+        catch (NoSuchBeanDefinitionException ex) {
+           return null;
+        }
+     }
+  
+     @Override
+     public String toString() {
+        return getPasswordEncoder().toString();
+     }
+  
+  }
+  ```
+
+通过源码分析得知如果在工厂中指定了PasswordEncoder，就会使用指定PasswordEncoder，否则就会使用默认DelegatingPasswordEncoder。
+
+
+
+### 5 密码加密实战
+
+- 测试生成的密码
+
+  ```java
+  @Test
+  public void test() {
+      //1.BCryptPasswordEncoder
+      BCryptPasswordEncoder bCryptPasswordEncoder = new BCryptPasswordEncoder();
+      System.out.println(bCryptPasswordEncoder.encode("123"));
+  
+      //2.Pbkdf2PasswordEncoder
+      Pbkdf2PasswordEncoder pbkdf2PasswordEncoder = new Pbkdf2PasswordEncoder();
+      System.out.println(pbkdf2PasswordEncoder.encode("123"));
+  
+      //3.SCryptPasswordEncoder //需要额外引入依赖
+      SCryptPasswordEncoder sCryptPasswordEncoder = new SCryptPasswordEncoder();
+      System.out.println(sCryptPasswordEncoder.encode("123"));
+  
+      //4.Argon2PasswordEncoder //需要额外引入依赖
+      Argon2PasswordEncoder argon2PasswordEncoder = new Argon2PasswordEncoder();
+      System.out.println(argon2PasswordEncoder.encode("123"));
+  }
+  ```
+
+- 使用固定密码加密方案
+
+  ```java
+  @Configuration
+  public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
+      // 使用 passwordEncoder 第一方式
+      @Bean
+      public PasswordEncoder passwordEncoder() {
+          return new BCryptPasswordEncoder();
+      }
+  
+      @Bean
+      public UserDetailsService userDetailsService() {
+          InMemoryUserDetailsManager inMemoryUserDetailsManager = new InMemoryUserDetailsManager();
+          inMemoryUserDetailsManager.createUser(User.withUsername("root").password("$2a$10$h12eiKc00lh/JPtPFVENEuMLtYRHHgiE/5FPNjI79IrOizApSN0VC").roles("admin").build());
+          return inMemoryUserDetailsManager;
+      }
+  
+      @Override
+      protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+          auth.userDetailsService(userDetailsService());
+      }
+  
+      @Override
+      protected void configure(HttpSecurity http) throws Exception {
+          http.authorizeRequests()
+                  .anyRequest().authenticated()
+                  .and()
+                  .formLogin()
+                  .and()
+                  .csrf().disable();
+      }
+  }
+  ```
+
+- 使用灵活密码加密方案 推荐
+
+  ```java
+  @Configuration
+  public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
+  
+      @Bean
+      public UserDetailsService userDetailsService() {
+          InMemoryUserDetailsManager inMemoryUserDetailsManager = new InMemoryUserDetailsManager();
+          // 使用 passwordEncoder 第二种方式
+          inMemoryUserDetailsManager.createUser(User.withUsername("root").password("{bcrypt}$2a$10$h12eiKc00lh/JPtPFVENEuMLtYRHHgiE/5FPNjI79IrOizApSN0VC").roles("admin").build());
+          return inMemoryUserDetailsManager;
+      }
+  
+      private final MyUserDetailService myUserDetailService;
+  
+      @Autowired
+      public WebSecurityConfig(MyUserDetailService myUserDetailService) {
+          this.myUserDetailService = myUserDetailService;
+      }
+  
+      @Override
+      protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+          auth.userDetailsService(userDetailsService());
+      }
+  
+      @Override
+      protected void configure(HttpSecurity http) throws Exception {
+          http.authorizeRequests()
+                  .anyRequest().authenticated()
+                  .and()
+                  .formLogin()
+                  .and()
+                  .csrf().disable();
+      }
+  }
+  ```
+
+
+
+### 6 密码自动升级
+
+推荐使用 DelegatingPasswordEncoder 的另外一个好处就是自动进行密码加密方案的升级，这个功能在整合一些老的系统时非常有用。
+
+- 准备库表
+
+  ```sql
+  -- 用户表
+  CREATE TABLE `user`
+  (
+      `id`                    int(11) NOT NULL AUTO_INCREMENT,
+      `username`              varchar(32)  DEFAULT NULL,
+      `password`              varchar(255) DEFAULT NULL,
+      `enabled`               tinyint(1) DEFAULT NULL,
+      `accountNonExpired`     tinyint(1) DEFAULT NULL,
+      `accountNonLocked`      tinyint(1) DEFAULT NULL,
+      `credentialsNonExpired` tinyint(1) DEFAULT NULL,
+      PRIMARY KEY (`id`)
+  ) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8;
+  -- 角色表
+  CREATE TABLE `role`
+  (
+      `id`      int(11) NOT NULL AUTO_INCREMENT,
+      `name`    varchar(32) DEFAULT NULL,
+      `name_zh` varchar(32) DEFAULT NULL,
+      PRIMARY KEY (`id`)
+  ) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8;
+  -- 用户角色关系表
+  CREATE TABLE `user_role`
+  (
+      `id`  int(11) NOT NULL AUTO_INCREMENT,
+      `uid` int(11) DEFAULT NULL,
+      `rid` int(11) DEFAULT NULL,
+      PRIMARY KEY (`id`),
+      KEY   `uid` (`uid`),
+      KEY   `rid` (`rid`)
+  ) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8;
+  ```
+
+- 插入数据
+
+  ```sql
+  -- 插入用户数据
+  BEGIN;
+    INSERT INTO `user`
+    VALUES (1, 'root', '{noop}123', 1, 1, 1, 1);
+    INSERT INTO `user`
+    VALUES (2, 'admin', '{noop}123', 1, 1, 1, 1);
+    INSERT INTO `user`
+    VALUES (3, 'blr', '{noop}123', 1, 1, 1, 1);
+  COMMIT;
+  -- 插入角色数据
+  BEGIN;
+    INSERT INTO `role`
+    VALUES (1, 'ROLE_product', '商品管理员');
+    INSERT INTO `role`
+    VALUES (2, 'ROLE_admin', '系统管理员');
+    INSERT INTO `role`
+    VALUES (3, 'ROLE_user', '用户管理员');
+  COMMIT;
+  -- 插入用户角色数据
+  BEGIN;
+    INSERT INTO `user_role`
+    VALUES (1, 1, 1);
+    INSERT INTO `user_role`
+    VALUES (2, 1, 2);
+    INSERT INTO `user_role`
+    VALUES (3, 2, 2);
+    INSERT INTO `user_role`
+    VALUES (4, 3, 3);
+  COMMIT;
+  ```
+
+- 整合 mybatis
+
+  ```xml
+  <dependency>
+      <groupId>mysql</groupId>
+      <artifactId>mysql-connector-java</artifactId>
+      <version>5.1.47</version>
+  </dependency>
+  
+  <dependency>
+    <groupId>org.mybatis.spring.boot</groupId>
+    <artifactId>mybatis-spring-boot-starter</artifactId>
+    <version>2.2.0</version>
+  </dependency>
+  
+  <dependency>
+    <groupId>com.alibaba</groupId>
+    <artifactId>druid</artifactId>
+    <version>1.2.8</version>
+  </dependency>
+  ```
+
+  ```properties
+  spring.datasource.type=com.alibaba.druid.pool.DruidDataSource
+  spring.datasource.driver-class-name=com.mysql.jdbc.Driver
+  spring.datasource.url=jdbc:mysql://192.168.88.100:3306/security?characterEncoding=UTF-8&serverTimezone=UTC&useSSL=false
+  spring.datasource.username=root
+  spring.datasource.password=123456
+  mybatis.mapper-locations=classpath:/mapper/*.xml
+  mybatis.type-aliases-package=com.shanhai.entity
+  logging.level.com.shanhai.dao=debug
+  ```
+
+- 编写实体类
+
+  ```java
+  public class User implements UserDetails {
+      private Integer id;
+      private String username;
+      private String password;
+      private Boolean enabled;
+      private Boolean accountNonExpired;
+      private Boolean accountNonLocked;
+      private Boolean credentialsNonExpired;
+      private List<Role> roles = new ArrayList<>();
+      @Override
+      public Collection<? extends GrantedAuthority> getAuthorities() {
+          List<SimpleGrantedAuthority> authorities = new ArrayList<>();
+          for (Role role : roles) {
+              authorities.add(new SimpleGrantedAuthority(role.getName()));
+          }
+          return authorities;
+      }
+  
+      @Override
+      public String getPassword() {
+          return password;
+      }
+  
+      public void setPassword(String password) {
+          this.password = password;
+      }
+  
+      @Override
+      public String getUsername() {
+          return username;
+      }
+  
+      public void setUsername(String username) {
+          this.username = username;
+      }
+  
+      @Override
+      public boolean isAccountNonExpired() {
+          return accountNonExpired;
+      }
+  
+      public void setAccountNonExpired(Boolean accountNonExpired) {
+          this.accountNonExpired = accountNonExpired;
+      }
+  
+      @Override
+      public boolean isAccountNonLocked() {
+          return accountNonLocked;
+      }
+  
+      public void setAccountNonLocked(Boolean accountNonLocked) {
+          this.accountNonLocked = accountNonLocked;
+      }
+  
+      @Override
+      public boolean isCredentialsNonExpired() {
+          return credentialsNonExpired;
+      }
+  
+      public void setCredentialsNonExpired(Boolean credentialsNonExpired) {
+          this.credentialsNonExpired = credentialsNonExpired;
+      }
+  
+      @Override
+      public boolean isEnabled() {
+          return enabled;
+      }
+  
+      public void setEnabled(Boolean enabled) {
+          this.enabled = enabled;
+      }
+  
+      public void setRoles(List<Role> roles) {
+          this.roles = roles;
+      }
+  
+      public Integer getId() {
+          return id;
+      }
+  
+      public void setId(Integer id) {
+          this.id = id;
+      }
+  }
+  ```
+
+  ```java
+  public class Role {
+      private Integer id;
+      private String name;
+      private String nameZh;
+  
+      public Integer getId() {
+          return id;
+      }
+  
+      public void setId(Integer id) {
+          this.id = id;
+      }
+  
+      public String getName() {
+          return name;
+      }
+  
+      public void setName(String name) {
+          this.name = name;
+      }
+  
+      public String getNameZh() {
+          return nameZh;
+      }
+  
+      public void setNameZh(String nameZh) {
+          this.nameZh = nameZh;
+      }
+  }
+  ```
+
+- 创建dao
+
+  ```java
+  @Mapper
+  public interface UserDao {
+      /**
+       * 根据用户id获取用户角色方法
+       *
+       * @param uid
+       * @return
+       */
+      List<Role> getRolesByUid(Integer uid);
+  
+      /**
+       * 根据用户名查询用户方法
+       *
+       * @param username
+       * @return
+       */
+      User loadUserByUsername(String username);
+  
+      /**
+       * 根据用户名更新密码方法
+       *
+       * @param username
+       * @param password
+       * @return
+       */
+      Integer updatePassword(@Param("username") String username, @Param("password") String password);
+  }
+  ```
+
+- 编写 mapper
+
+  ```xml
+  <!DOCTYPE mapper
+          PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+          "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+  <mapper namespace="com.shanhai.dao.UserDao">
+  
+  
+      <select id="loadUserByUsername" resultType="User">
+          select id,
+                 username,
+                 password,
+                 enabled,
+                 accountNonExpired,
+                 accountNonLocked,
+                 credentialsNonExpired
+          from `user`
+          where username = #{username}
+      </select>
+      
+      <select id="getRolesByUid" resultType="Role">
+          select r.id,
+                 r.name,
+                 r.name_zh nameZh
+          from `role` r,
+               `user_role` ur
+          where r.id = ur.rid
+            and ur.uid = #{uid}
+      </select>
+  
+      <update id="updatePassword">
+          update `user`
+          set password=#{password}
+          where username = #{username}
+      </update>
+  
+  </mapper>
+  ```
+
+- 编写 service 实现
+
+  ```java
+  @Service
+  public class MyUserDetailService implements UserDetailsService, UserDetailsPasswordService {
+      private final UserDao userDao;
+  
+      @Autowired
+      public MyUserDetailService(UserDao userDao) {
+          this.userDao = userDao;
+      }
+  
+      @Override
+      public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+          User user = userDao.loadUserByUsername(username);
+  
+          user.setRoles(userDao.getRolesByUid(user.getId()));
+          return user;
+      }
+  
+      /**
+       * 默认使用 DelegatingPasswordEncode 默认使用相当最安全密码加密 Bcrypt ---> Cxxx
+       *
+       * @param user        the user to modify the password for
+       * @param newPassword the password to change to, encoded by the configured
+       *                    {@code PasswordEncoder}
+       * @return
+       */
+      @Override
+      public UserDetails updatePassword(UserDetails user, String newPassword) {
+          Integer result = userDao.updatePassword(user.getUsername(), newPassword);
+          if (result == 1) {
+              ((User) user).setPassword(newPassword);
+          }
+          return user;
+      }
+  }
+  ```
+
+- 配置securityconfig
+
+  ```java
+  @Configuration
+  public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
+  
+      private final MyUserDetailService myUserDetailService;
+  
+      @Autowired
+      public WebSecurityConfig(MyUserDetailService myUserDetailService) {
+          this.myUserDetailService = myUserDetailService;
+      }
+  
+      @Override
+      protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+          // 查询数据库
+          auth.userDetailsService(myUserDetailService);
+      }
+  
+      @Override
+      protected void configure(HttpSecurity http) throws Exception {
+          http.authorizeRequests()
+                  .anyRequest().authenticated()
+                  .and()
+                  .formLogin()
+                  .and()
+                  .csrf().disable();
+      }
+  }
+  ```
+
+- 启动项目测试
+
++++
+
+## 六、RememberMe
+
+- 简介
+- 基本使用
+- 原理分析
+- 持久化令牌
+
+### 1 简介
+
+RememberMe 这个功能非常常见，下图就是 QQ邮箱 登录时的“记住我”选项。提到 RememberMe，一些初学者往往会有一些误解，认为 RememberMe 功能就是把**用户名**/**密码**用 Cookie 保存在浏览器中，下次登录时不用再次输入用户名/密码。这个理解显然是不对的。我们这里所说的 RememberMe 是一种服务器端的行为。传统的登录方式基于 Session 会话，一旦用户的会话超时过期，就要再次登录，这样太过于烦琐。如果能有一种机制，让用户会话过期之后，还能继续保持认证状态，就会方便很多，RememberMe 就是为了解决这一需求而生的。
+
+![image-20220308185102746](10-SpringSecurity.assets/image-20220308185102746.png)
+
+具体的实现思路就是通过 Cookie 来记录当前用户身份。当用户登录成功之后，会通过一定算法，将用户信息、时间戳等进行加密，加密完成后，通过响应头带回前端存储在cookie中，当浏览器会话过期之后，如果再次访问该网站，会自动将 Cookie 中的信息发送给服务器，服务器对 Cookie中的信息进行校验分析，进而确定出用户的身份，Cookie中所保存的用户信息也是有时效的，例如三天、一周等。
+
+
+
+### 2 基本使用
+
+1. 开启记住我
+
+   ```java
+   @Override
+       protected void c onfigure(HttpSecurity http) throws Exception {
+           http.authorizeRequests()
+                   .anyRequest().authenticated()
+                   .and()
+                   .formLogin()
+                   // ...
+                   .and()
+                   .rememberMe() // 开启记住我功能
+                   .and()
+                   .csrf().disable();
+       }
+   }
+   ```
+
+2. 使用记住我
+
+   可以看到一旦打开了记住我功能，登录页面中会多出一个 RememberMe 选项。
+
+   ![image-20230110141142034](10-SpringSecurity.assets/image-20230110141142034.png)
+
+3. 测试记住我
+
+   登录时勾选 RememberMe 选项，然后重启服务端之后，在测试接口是否能免登录访问。
+
+
+
+### 3 原理分析
+
+#### 3.1 RememberMeAuthenticationFilter
+
+![image-20220317194843649](10-SpringSecurity.assets/image-20220317194843649.png)
+
+从上图中，当在SecurityConfig配置中开启了"记住我"功能之后,在进行认证时如果勾选了"记住我"选项，此时打开浏览器控制台，分析整个登录过程。首先当我们登录时，在登录请求中多了一个 RememberMe 的参数。
+
+![image-20220308191736005](10-SpringSecurity.assets/image-20220308191736005.png)
+
+很显然，这个参数就是告诉服务器应该开启 RememberMe 功能的。如果自定义登录页面开启 RememberMe 功能应该多加入一个一样的请求参数就可以啦。该请求会被 `RememberMeAuthenticationFilter`进行拦截然后自动登录具体参见源码:
+
+![image-20220317195930708](10-SpringSecurity.assets/image-20220317195930708.png)
+
+- 请求到达过滤器之后，首先判断 SecurityContextHolder 中是否有值，没值的话表示用户尚未登录，此时调用 autoLogin 方法进行自动登录。
+- 当自动登录成功后返回的rememberMeAuth 不为null 时，表示自动登录成功，此时调用 authenticate 方法对 key 进行校验，并且将登录成功的用户信息保存到 SecurityContextHolder 对象中，然后调用登录成功回调，并发布登录成功事件。需要注意的是，登录成功的回调并不包含 RememberMeServices 中的 1oginSuccess 方法。
+- 如果自动登录失败，则调用 remenberMeServices.loginFail 方法处理登录失败回调。onUnsuccessfulAuthentication 和 onSuccessfulAuthentication 都是该过滤器中定义的空方法，并没有任何实现这就是 RememberMeAuthenticationFilter 过滤器所做的事情，成功将 RememberMeServices的服务集成进来。
+
+
+
+#### 3.2 RememberMeServices
+
+这里一共定义了三个方法：
+
+1. autoLogin 方法可以从请求中提取出需要的参数，完成自动登录功能。
+2. loginFail 方法是自动登录失败的回调。
+3. 1oginSuccess 方法是自动登录成功的回调。
+
+![image-20230110223916432](10-SpringSecurity.assets/image-20230110223916432.png)
+
+
+
+#### 3.3 TokenBasedRememberMeServices
+
+在开启记住我后如果没有加入额外配置默认实现就是由TokenBasedRememberMeServices进行的实现。查看这个类源码中 processAutoLoginCookie 方法实现：
+
+![image-20220317201055784](10-SpringSecurity.assets/image-20220317201055784.png)
+
+processAutoLoginCookie 方法主要用来验证 Cookie 中的令牌信息是否合法：
+
+1. 首先判断 cookieTokens 长度是否为3，不为了说明格式不对，则直接抛出异常。
+
+2. 从cookieTokens 数组中提取出第 1项，也就是过期时间，判断令牌是否过期，如果己经过期，则拋出异常。
+3. 根据用户名 （cookieTokens 数组的第2项）查询出当前用户对象。
+4. 调用 makeTokenSignature 方法生成一个签名，签名的生成过程如下：首先将用户名、令牌过期时间、用户密码以及 key 组成一个宇符串，中间用“:”隔开，然后通过 MD5 消息摘要算法对该宇符串进行加密，并将加密结果转为一个字符串返回。
+5. 判断第4 步生成的签名和通过 Cookie 传来的签名是否相等（即 cookieTokens 数组
+   的第2项），如果相等，表示令牌合法，则直接返回用户对象，否则拋出异常。
+
+![image-20220318142054096](10-SpringSecurity.assets/image-20220318142054096.png)
+
+1. 在这个回调中，首先获取用户经和密码信息，如果用户密码在用户登录成功后从successfulAuthentication对象中擦除，则从数据库中重新加载出用户密码。
+
+2. 计算出令牌的过期时间，令牌默认有效期是两周。
+3. 根据令牌的过期时间、用户名以及用户密码，计算出一个签名。
+4. 调用 setCookie 方法设置 Cookie， 第一个参数是一个数组，数组中一共包含三项。用户名、过期时间以及签名，在setCookie 方法中会将数组转为字符串，并进行 Base64编码后响应给前端。
+
+
+
+#### 3.4 总结
+
+当用户通过用户名/密码的形式登录成功后，系统会根据用户的用户名、密码以及令牌的过期时间计算出一个签名，这个签名使用 MD5 消息摘要算法生成，是不可逆的。然后再将用户名、令牌过期时间以及签名拼接成一个字符串，中间用“:” 隔开，对拼接好的字符串进行Base64 编码，然后将编码后的结果返回到前端，也就是我们在浏览器中看到的令牌。当会话过期之后，访问系统资源时会自动携带上Cookie中的令牌，服务端拿到 Cookie中的令牌后，先进行 Bae64解码，解码后分别提取出令牌中的三项数据：接着根据令牌中的数据判断令牌是否已经过期，如果没有过期，则根据令牌中的用户名查询出用户信息：接着再计算出一个签名和令牌中的签名进行对比，如果一致，表示会牌是合法令牌，自动登录成功，否则自动登录失败。
+
+![image-20230110224324412](10-SpringSecurity.assets/image-20230110224324412.png)
+
+![image-20230110224332841](10-SpringSecurity.assets/image-20230110224332841.png)
+
+
+
+### 4 内存令牌
+
+#### 4.1 PersistentTokenBasedRememberMeServices
+
+![image-20230110224505465](10-SpringSecurity.assets/image-20230110224505465.png)
+
+1. 不同于 TokonBasedRemornberMeServices 中的 processAutologinCookie 方法，这里cookieTokens 数组的长度为2，第一项是series，第二项是 token。
+2. 从cookieTokens数组中分到提取出 series 和 token；然后根据 series 去内存中查询出一个 PersistentRememberMeToken对象。如果查询出来的对象为null，表示内存中并没有series对应的值，本次自动登录失败。如果查询出来的 token 和从 cookieTokens 中解析出来的token不相同，说明自动登录会牌已经泄漏（恶意用户利用令牌登录后，内存中的token变了)，此时移除当前用户的所有自动登录记录并抛出异常。
+3. 根据数据库中查询出来的结果判断令牌是否过期，如果过期就抛出异常。
+4. 生成一个新的 PersistentRememberMeToken 对象，用户名和series 不变，token 重新生成，date 也使用当前时间。newToken 生成后，根据 series 去修改内存中的 token 和 date(即每次自动登录后都会产生新的 token 和 date）
+5. 调用 addCookie 方法添加 Cookie，在addCookie 方法中，会调用到我们前面所说的
+   setCookie 方法，但是要注意第一个数组参数中只有两项：series 和 token（即返回到前端的令牌是通过对 series 和 token 进行 Base64 编码得到的）
+6. 最后将根据用户名查询用户对象并返回。
+
+
+
+#### 4.2 使用内存中令牌实现
+
+```java
+@Configuration
+public class SecurityConfig extends WebSecurityConfigurerAdapter {
+
+    @Bean
+    public UserDetailsService userDetailsService() {
+        InMemoryUserDetailsManager inMemoryUserDetailsManager = new InMemoryUserDetailsManager();
+        inMemoryUserDetailsManager.createUser(User.withUsername("root").password("{noop}123").roles("admin").build());
+        return inMemoryUserDetailsManager;
+    }
+
+    @Override
+    protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+        auth.userDetailsService(userDetailsService());
+    }
+
+    @Override
+    protected void configure(HttpSecurity http) throws Exception {
+        http.authorizeRequests()
+                // .mvcMatchers("/index").rememberMe() // 指定资源记住我
+                .anyRequest().authenticated()
+                .and()
+                .formLogin()
+                .and()
+                .rememberMe() // 开启记住我功能
+                .rememberMeServices(rememberMeServices()) // 指定 RememberMeService 的实现
+                //.rememberMeParameter("remember-me") // 用来接收请求中哪个参数作为开启记住我的参数
+                // .alwaysRemember(true) // 总是记住我
+                .and()
+                .csrf().disable();
+    }
+
+    /**
+     * 指定记住我的实现
+     *
+     * @return
+     */
+    @Bean
+    public RememberMeServices rememberMeServices() {
+        /*
+         * 参数 1: 自定义一个生成令牌 key 默认 UUID
+         * 参数 2: 认证数据源
+         * 参数 3: 令牌存储方式
+         */
+        return new PersistentTokenBasedRememberMeServices(
+                UUID.randomUUID().toString(),
+                userDetailsService(),
+                new InMemoryTokenRepositoryImpl()
+        );
+    }
+}
+```
+
+
+
+### 5 持久化令牌
+
+1. 引入依赖
+
+   ```xml
+   <dependency>
+     <groupId>com.alibaba</groupId>
+     <artifactId>druid</artifactId>
+     <version>1.2.8</version>
+   </dependency>
+   
+   <dependency>
+     <groupId>mysql</groupId>
+     <artifactId>mysql-connector-java</artifactId>
+     <version>5.1.47</version>
+   </dependency>
+   
+   <dependency>
+     <groupId>org.mybatis.spring.boot</groupId>
+     <artifactId>mybatis-spring-boot-starter</artifactId>
+     <version>2.2.0</version>
+   </dependency>
+   ```
+
+2. 配置数据源
+
+   ```properties
+   spring.thymeleaf.cache=false
+   spring.datasource.type=com.alibaba.druid.pool.DruidDataSource
+   spring.datasource.driver-class-name=com.mysql.jdbc.Driver
+   spring.datasource.url=jdbc:mysql://192.168.88.100:3306/security?characterEncoding=UTF-8
+   spring.datasource.username=root
+   spring.datasource.password=123456
+   mybatis.mapper-locations=classpath:mapper/*.xml
+   mybatis.type-aliases-package=com.shanhai.entity
+   ```
+
+3. 配置持久化令牌
+
+   ```java
+   package com.shanhai.config;
+   
+   import org.springframework.beans.factory.annotation.Autowired;
+   import org.springframework.context.annotation.Bean;
+   import org.springframework.context.annotation.Configuration;
+   import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
+   import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+   import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
+   import org.springframework.security.core.userdetails.User;
+   import org.springframework.security.core.userdetails.UserDetailsService;
+   import org.springframework.security.provisioning.InMemoryUserDetailsManager;
+   import org.springframework.security.web.authentication.rememberme.JdbcTokenRepositoryImpl;
+   import org.springframework.security.web.authentication.rememberme.PersistentTokenRepository;
+   
+   import javax.sql.DataSource;
+   
+   @Configuration
+   public class SecurityConfig extends WebSecurityConfigurerAdapter {
+   
+       private final DataSource dataSource;
+   
+       @Autowired
+       public SecurityConfig(DataSource dataSource) {
+           this.dataSource = dataSource;
+       }
+   
+       @Bean
+       public UserDetailsService userDetailsService() {
+           InMemoryUserDetailsManager inMemoryUserDetailsManager = new InMemoryUserDetailsManager();
+           inMemoryUserDetailsManager.createUser(User.withUsername("root").password("{noop}123").roles("admin").build());
+           return inMemoryUserDetailsManager;
+       }
+   
+       @Override
+       protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+           auth.userDetailsService(userDetailsService());
+       }
+   
+       @Override
+       protected void configure(HttpSecurity http) throws Exception {
+           http.authorizeRequests()
+                   // .mvcMatchers("/index").rememberMe() // 指定资源记住我
+                   .anyRequest().authenticated()
+                   .and()
+                   .formLogin()
+                   .and()
+                   .rememberMe() // 开启记住我功能
+                   .tokenRepository(persistentTokenRepository())
+                   .and()
+                   .csrf().disable();
+       }
+   
+       @Bean
+       public PersistentTokenRepository persistentTokenRepository() {
+           JdbcTokenRepositoryImpl jdbcTokenRepository = new JdbcTokenRepositoryImpl();
+           jdbcTokenRepository.setCreateTableOnStartup(true); //只需要没有表时设置为 true
+           jdbcTokenRepository.setDataSource(dataSource);
+           return jdbcTokenRepository;
+       }
+   }
+   ```
+
+4.  启动项目并查看数据库
+
+   **`注意:启动项目会自动创建一个表，用来保存记住我的 token 信息 `**
+
+   ![image-20230110232304006](10-SpringSecurity.assets/image-20230110232304006.png)
+
+5. 再次测试记住我
+
+   在测试发现即使服务器重新启动，依然可以自动登录。
+
+
+
+### 6 自定义记住我
 
 
 
