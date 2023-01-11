@@ -2691,7 +2691,7 @@ RememberMe 这个功能非常常见，下图就是 QQ邮箱 登录时的“记�
 
 
 
-### 2 基本使用
+### 2 基本使用
 
 1. 开启记住我
 
@@ -2980,107 +2980,1041 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
 
 ### 6 自定义记住我
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+#### 6.1 查看记住我源码
+
+AbstractUserDetailsAuthenticationProvider类中authenticate方法在最后认证成功之后实现了记住我功能，但是查看源码得知如果开启记住我，必须进行相关的设置。
+
+![image-20200814184455083](10-SpringSecurity.assets/image-20200814184455083.png)
+
+![image-20200814184605516](10-SpringSecurity.assets/image-20200814184605516.png)
+
+![image-20200814184651238](10-SpringSecurity.assets/image-20200814184651238.png)
+
+![image-20200814185157418](10-SpringSecurity.assets/image-20200814185157418.png)
+
+#### 6.2 传统 web 开发记住我实现
+
+通过源码分析得知必须在认证请求中加入参数remember-me值为"true,on,yes,1"其中任意一个才可以完成记住我功能，这个时候修改认证界面：
+
+```html
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>登录页面</title>
+</head>
+<body>
+<h1>用户登录</h1>
+<form method="post" th:action="@{/doLogin}">
+    用户名：<input name="uname" type="text"/> <br>
+    密 码：<input name="passwd" type="password"/> <br>
+    <!-- value 可选值默认为：true yes on 1 都可以 -->
+    记住我：<input name="remember-me" type="checkbox" value="true"/> <br>
+    <input type="submit" value="登录"/>
+</form>
+</body>
+</html>
+```
+
+配置中开启记住我
+
+```java
+@Configuration
+public class SecurityConfig extends WebSecurityConfigurerAdapter {
+
+    // 自定义数据源
+    @Bean
+    public UserDetailsService userDetailsService() {
+        InMemoryUserDetailsManager inMemoryUserDetailsManager = new InMemoryUserDetailsManager();
+        inMemoryUserDetailsManager.createUser(User.withUsername("root").password("{noop}123").roles("admin").build());
+        return inMemoryUserDetailsManager;
+    }
+
+    @Override
+    protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+        auth.userDetailsService(userDetailsService());
+    }
+
+    @Override
+    protected void configure(HttpSecurity http) throws Exception {
+        http.authorizeRequests()
+                .mvcMatchers("/login.html").permitAll()
+                .anyRequest().authenticated()
+                .and()
+                .formLogin()
+                .loginPage("/login.html")
+                .loginProcessingUrl("/doLogin")
+                .usernameParameter("uname")
+                .passwordParameter("passwd")
+                .defaultSuccessUrl("/", true)
+                .and()
+                .rememberMe() // 开启记住我
+                .rememberMeParameter("remember-me")
+                // .alwaysRemember(true) // 总是记住我
+                .and()
+                .csrf().disable();
+    }
+}
+```
+
+
+
+#### 6.3 前后端分离开发记住我实现
+
+##### 6.3.1 自定义认证类 LoginFilter
+
+```java
+/**
+ * 自定义前后端分离认证 Filter
+ */
+public class LoginFilter extends UsernamePasswordAuthenticationFilter {
+
+    @Override
+    public Authentication attemptAuthentication(HttpServletRequest request, HttpServletResponse response) 
+        throws AuthenticationException {
+        System.out.println("========================================================");
+        // 1.判断是否是 post 方式请求
+        if (!request.getMethod().equals("POST")) {
+            throw new AuthenticationServiceException("Authentication method not supported: " + request.getMethod());
+        }
+        // 2.判断是否是 json 格式请求类型
+        if (request.getContentType().equalsIgnoreCase(MediaType.APPLICATION_JSON_VALUE)) {
+            // 3.从 json 数据中获取用户输入的用户名和密码进行认证
+            try {
+                Map<String, String> userInfo = new ObjectMapper().readValue(request.getInputStream(), Map.class);
+                String username = userInfo.get(getUsernameParameter());
+                String password = userInfo.get(getPasswordParameter());
+                String rememberMeValue = userInfo.get(AbstractRememberMeServices.DEFAULT_PARAMETER);
+                if (!ObjectUtils.isEmpty(rememberMeValue)) {
+                    request.setAttribute(AbstractRememberMeServices.DEFAULT_PARAMETER, rememberMeValue);
+                }
+                System.out.println("用户名：" + username + "，密码：" + password + "，是否记住我：" + rememberMeValue);
+                UsernamePasswordAuthenticationToken authRequest = new UsernamePasswordAuthenticationToken(username, password);
+                setDetails(request, authRequest);
+                return this.getAuthenticationManager().authenticate(authRequest);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        System.out.println("========================================================");
+        return super.attemptAuthentication(request, response);
+    }
+}
+```
+
+##### 6.3.2 自定义 RememberMeService
+
+```java
+/**
+ * @description: 自定义记住我 services 实现类
+ * @author: xu
+ * @date: 2023/1/11 13:57
+ */
+public class MyPersistentTokenBasedRememberMeServices extends PersistentTokenBasedRememberMeServices {
+
+    public MyPersistentTokenBasedRememberMeServices(String key, UserDetailsService userDetailsService, PersistentTokenRepository tokenRepository) {
+        super(key, userDetailsService, tokenRepository);
+    }
+
+    /**
+     * 自定义前后端分离 获取 remember-me 的方式
+     *
+     * @param request
+     * @param parameter
+     * @return
+     */
+    @Override
+    protected boolean rememberMeRequested(HttpServletRequest request, String parameter) {
+        String paramValue = request.getAttribute(parameter).toString();
+        if (paramValue == null || !paramValue.equalsIgnoreCase("true") &&
+                !paramValue.equalsIgnoreCase("on") && !paramValue.equalsIgnoreCase("yes") &&
+                !paramValue.equals("1")) {
+            this.logger.debug(LogMessage.format("Did not send remember-me cookie (principal did not set parameter '%s')", parameter));
+            return false;
+        } else {
+            return true;
+        }
+    }
+}
+```
+
+##### 6.3.3 配置记住我
+
+```java
+@Configuration
+public class SecurityConfig extends WebSecurityConfigurerAdapter {
+    @Bean
+    public UserDetailsService userDetailsService() {
+        InMemoryUserDetailsManager inMemoryUserDetailsManager = new InMemoryUserDetailsManager();
+        inMemoryUserDetailsManager.createUser(User.withUsername("root").password("{noop}123").roles("admin").build());
+        return inMemoryUserDetailsManager;
+    }
+
+    @Override
+    protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+        auth.userDetailsService(userDetailsService());
+    }
+
+    @Override
+    @Bean
+    public AuthenticationManager authenticationManagerBean() throws Exception {
+        return super.authenticationManagerBean();
+    }
+
+    // 自定义的filter交给工厂管理
+    @Bean
+    public LoginFilter loginFilter() throws Exception {
+        LoginFilter loginFilter = new LoginFilter();
+        loginFilter.setFilterProcessesUrl("/doLogin"); // 指定认证url
+        loginFilter.setUsernameParameter("uname"); // 指定接收 json 用户名key
+        loginFilter.setPasswordParameter("passwd"); // 指定接收 json 密码key
+        loginFilter.setAuthenticationManager(authenticationManagerBean());
+        loginFilter.setRememberMeServices(rememberMeServices()); // 设置认证成功时使用自定义rememberMeServices
+        loginFilter.setAuthenticationSuccessHandler((req, resp, authentication) -> {
+            Map<String, Object> result = new HashMap<String, Object>();
+            result.put("msg", "登录成功");
+            result.put("status", 200);
+            result.put("用户信息", authentication.getPrincipal());
+            resp.setContentType("application/json;charset=UTF-8");
+            resp.setStatus(HttpStatus.OK.value());
+            String s = new ObjectMapper().writeValueAsString(result);
+            resp.getWriter().println(s);
+        }); // 认证成功处理
+        loginFilter.setAuthenticationFailureHandler((req, resp, ex) -> {
+            Map<String, Object> result = new HashMap<String, Object>();
+            result.put("msg", "登录失败: " + ex.getMessage());
+            result.put("status", 500);
+            resp.setContentType("application/json;charset=UTF-8");
+            resp.setStatus(HttpStatus.INTERNAL_SERVER_ERROR.value());
+            String s = new ObjectMapper().writeValueAsString(result);
+            resp.getWriter().println(s);
+        }); // 认证失败处理
+        return loginFilter;
+    }
+
+    @Override
+    protected void configure(HttpSecurity http) throws Exception {
+        http.authorizeRequests()
+                .anyRequest().authenticated() // 所有请求都必须认证
+                .and()
+                .formLogin()
+                .and()
+                .rememberMe() // 开启记住我功能 cookie进行实现  1.认证成功保存记住我 cookie 到客户端 2.只有 cookie 写入客户端成功才能实现自动登录功能
+                .rememberMeServices(rememberMeServices()) // 设置自动登录使用哪个 rememberMeServices
+                .and()
+                .exceptionHandling()
+                .authenticationEntryPoint((req, resp, ex) -> {
+                    resp.setContentType(MediaType.APPLICATION_JSON_UTF8_VALUE);
+                    resp.setStatus(HttpStatus.UNAUTHORIZED.value());
+                    resp.getWriter().println("请认证之后再去处理！");
+                })
+                .and()
+                .logout()
+                .logoutRequestMatcher(new OrRequestMatcher(
+                        new AntPathRequestMatcher("/logout", HttpMethod.GET.name()),
+                        new AntPathRequestMatcher("/logout", HttpMethod.DELETE.name())
+                ))
+                .logoutSuccessHandler((req, resp, auth) -> {
+                    Map<String, Object> result = new HashMap<>();
+                    result.put("msg", "注销成功");
+                    result.put("status", 200);
+                    resp.setContentType("application/json;charset=UTF-8");
+                    resp.setStatus(HttpStatus.OK.value());
+                    String s = new ObjectMapper().writeValueAsString(result);
+                    resp.getWriter().println(s);
+                })
+                .and()
+                .csrf().disable();
+
+        // at：用来某个 filter 替换过滤器链中哪个 filter
+        // before：放在过滤器链中哪个 filter 之前
+        // after：放在过滤器链中哪个 filter 之后
+        http.addFilterAt(loginFilter(), UsernamePasswordAuthenticationFilter.class);
+    }
+    
+    @Bean
+    public RememberMeServices rememberMeServices() {
+        return new MyPersistentTokenBasedRememberMeServices(
+                UUID.randomUUID().toString(),
+                userDetailsService(),
+                new InMemoryTokenRepositoryImpl());
+    }
+}
+```
+
++++
+
+## 七、会话管理
+
+- 简介
+- 会话并发管理
+- 会话共享实战
+
+### 1 简介
+
+当浏览器调用登录接口登录成功后，服务端会和浏览器之间建立一个会话 (Session) 浏览器在每次发送请求时都会携带一个 Sessionld，服务端则根据这个 Sessionld 来判断用户身份。当浏览器关闭后，服务端的 Session 并不会自动销毁，需要开发者手动在服务端调用 Session销毁方法，或者等 Session 过期时间到了自动销毁。在Spring Security 中，与HttpSession相关的功能由 SessionManagementFiter 和SessionAuthenticationStrategy 接口来处理，SessionManagementFiter 过滤器将 Session 相关操作委托给 SessionAuthenticationStrategy 接口去完成。
+
+
+
+### 2 会话并发管理
+
+#### 2.1 简介
+
+会话并发管理就是指在当前系统中，同一个用户可以同时创建多少个会话，如果一个设备对应一个会话，那么也可以简单理解为同一个用户可以同时在多少台设备上进行登录。默认情况下，同一用户在多少台设备上登录并没有限制，不过开发者可以在 Spring Security 中对此进行配置。
+
+
+
+#### 2.2 开启会话管理
+
+```java
+@Configuration
+public class SecurityConfig extends WebSecurityConfigurerAdapter {
+    @Override
+    protected void configure(HttpSecurity http) throws Exception {
+        http.authorizeRequests()
+                .anyRequest().authenticated()
+                .and()
+                .formLogin()
+                .and()
+                .csrf().disable()
+                .sessionManagement() // 开启会话管理
+                .maximumSessions(1); // 允许会话的最大并发为1 只能一个客户端
+    }
+
+    @Bean
+    public HttpSessionEventPublisher sessionEventPublisher() {
+        return new HttpSessionEventPublisher();
+    }
+}
+```
+
+1. sessionManagement() 用来开启会话管理
+
+   maximumSessions(1) 指定会话的并发数为 1。
+
+2. HttpSessionEventPublisher 提供一个 HttpSessionEvenePubishor-实例。Spring Security中通过一个 Map 集合来集护当前的 HttpSession 记录，进而实现会话的并发管理。当用户登录成功时，就向集合中添加一条Http Session 记录；当会话销毁时，就从集合中移除一条 Httpsession 记录。HtpSesionEvenPublisher 实现了 Http SessionListener 接口，可以监听到 HtpSession 的创建和销毀事件，并将 Http Session 的创建/销毁事件发布出去，这样，当有 HttpSession 销毀时，Spring Security 就可以感知到该事件了。
+
+
+
+#### 2.3 测试会话管理
+
+配置完成后，启动项目。这次测试我们需要两个浏览器，如果使用了 Chrome 浏览器，可以使用 Chrome 浏览器中的多用户方式（相当于两个浏览器）先在第一个浏览器中输入 http://localhost:8080，此时会自动跳转到登录页面，完成登录操作，就可以访问到数据了；接下来在第二个浏览器中也输入 http://localhost:8080，也需要登录，完成登录操作；当第二个浏览器登录成功后，再回到第一个浏览器，刷新页面。结果出现下图：
+
+![image-20230111152134186](10-SpringSecurity.assets/image-20230111152134186.png)
+
+
+
+### 3 会话失效处理
+
+#### 3.1 传统web开发处理
+
+```java
+@Configuration
+public class SecurityConfig extends WebSecurityConfigurerAdapter {
+    @Override
+    protected void configure(HttpSecurity http) throws Exception {
+        http.authorizeRequests()
+                .anyRequest().authenticated()
+                .and()
+                .formLogin()
+                .and()
+                .csrf().disable()
+                .sessionManagement() // 开启会话管理
+                .maximumSessions(1) // 允许会话的最大并发 只能一个客户端
+                .expiredUrl("/login"); // 传统架构处理方案：当用户被挤下线之后的跳转路径
+    }
+
+    @Bean
+    public HttpSessionEventPublisher sessionEventPublisher() {
+        return new HttpSessionEventPublisher();
+    }
+}
+```
+
+
+
+#### 3.2 前后端分离开发处理
+
+```java
+@Configuration
+public class SecurityConfig extends WebSecurityConfigurerAdapter {
+    @Override
+    protected void configure(HttpSecurity http) throws Exception {
+        http.authorizeRequests()
+                .anyRequest().authenticated()
+                .and()
+                .formLogin()
+                .and()
+                .csrf().disable()
+                .sessionManagement() // 开启会话管理
+                .maximumSessions(1) // 允许会话的最大并发 只能一个客户端
+                .expiredSessionStrategy(event -> { // 前后端分离架构处理方案
+                    HttpServletResponse response = event.getResponse();
+                    response.setContentType("application/json;charset=UTF-8");
+                    Map<String, Object> result = new HashMap<>();
+                    result.put("status", 500);
+                    result.put("msg", "当前会话已经失效,请重新登录!");
+                    String s = new ObjectMapper().writeValueAsString(result);
+                    response.setContentType("application/json;charset=UTF-8");
+                    response.getWriter().println(s);
+                    response.flushBuffer();
+                });
+    }
+
+    @Bean
+    public HttpSessionEventPublisher sessionEventPublisher() {
+        return new HttpSessionEventPublisher();
+    }
+}
+```
+
+
+
+### 4 禁止再次登录
+
+默认的效果是一种被“挤下线”的效果，后面登录的用户会把前面登录的用户“挤下线”。还有一种是禁止后来者登录，即一旦当前用户登录成功，后来者无法再次使用相同的用户登录，直到当前用户主动注销登录，配置如下：
+
+```java
+@Configuration
+public class SecurityConfig extends WebSecurityConfigurerAdapter {
+    @Override
+    protected void configure(HttpSecurity http) throws Exception {
+        http.authorizeRequests()
+                .anyRequest().authenticated()
+                .and()
+                .formLogin()
+                .and()
+                .logout()
+                .and()
+                .csrf().disable()
+                .sessionManagement() // 开启会话管理
+                .maximumSessions(1) // 允许会话的最大并发 只能一个客户端
+                //.expiredUrl("/login"); // 传统架构处理方案：当用户被挤下线之后的跳转路径
+                .expiredSessionStrategy(event -> { //前后端分离架构处理方案
+                    HttpServletResponse response = event.getResponse();
+                    response.setContentType("application/json;charset=UTF-8");
+                    Map<String, Object> result = new HashMap<>();
+                    result.put("status", 500);
+                    result.put("msg", "当前会话已经失效,请重新登录!");
+                    String s = new ObjectMapper().writeValueAsString(result);
+                    response.setContentType("application/json;charset=UTF-8");
+                    response.getWriter().println(s);
+                    response.flushBuffer();
+                })
+                .maxSessionsPreventsLogin(true); // 一旦登录，禁止再次登录
+    }
+
+    @Bean
+    public HttpSessionEventPublisher sessionEventPublisher() {
+        return new HttpSessionEventPublisher();
+    }
+}
+```
+
+
+
+### 5 会话共享
+
+前面所讲的会话管理都是单机上的会话管理，如果当前是集群环境，前面所讲的会话管理方案就会失效。此时可以利用 spring-session 结合 redis 实现 session 共享。
+
+**实战**：
+
+1. 引入依赖
+
+   ```xml
+   <dependency>
+     <groupId>org.springframework.boot</groupId>
+     <artifactId>spring-boot-starter-data-redis</artifactId>
+   </dependency>
+   <dependency>
+     <groupId>org.springframework.session</groupId>
+     <artifactId>spring-session-data-redis</artifactId>
+   </dependency>
+   ```
+
+2. 编写配置
+
+   ```properties
+   spring.redis.host=192.168.88.100
+   spring.redis.port=6379
+   ```
+
+3. 配置Security
+
+   ```java
+   @Configuration
+   public class SecurityConfig extends WebSecurityConfigurerAdapter {
+       private final FindByIndexNameSessionRepository sessionRepository;
+   
+       @Autowired
+       public SecurityConfig(FindByIndexNameSessionRepository sessionRepository) {
+           this.sessionRepository = sessionRepository;
+       }
+   
+       @Override
+       protected void configure(HttpSecurity http) throws Exception {
+           http.authorizeRequests()
+                   .anyRequest().authenticated()
+                   .and()
+                   .formLogin()
+                   .and()
+                   .logout()
+                   .and()
+                   .csrf().disable()
+                   .sessionManagement() // 开启会话管理
+                   .maximumSessions(1) // 允许会话的最大并发 只能一个客户端
+                   .expiredSessionStrategy(event -> { //前后端分离架构处理方案
+                       HttpServletResponse response = event.getResponse();
+                       response.setContentType("application/json;charset=UTF-8");
+                       Map<String, Object> result = new HashMap<>();
+                       result.put("status", 500);
+                       result.put("msg", "当前会话已经失效,请重新登录!");
+                       String s = new ObjectMapper().writeValueAsString(result);
+                       response.setContentType("application/json;charset=UTF-8");
+                       response.getWriter().println(s);
+                       response.flushBuffer();
+                   })
+                   .sessionRegistry(sessionRegistry()) // 将session交给谁管理
+                   .maxSessionsPreventsLogin(true); // 一旦登录，禁止再次登录
+       }
+   
+       // 创建 session 同步到 redis 中的方案
+       @Bean
+       public SpringSessionBackedSessionRegistry sessionRegistry() {
+           return new SpringSessionBackedSessionRegistry(sessionRepository);
+       }
+   
+      /* @Bean
+       public HttpSessionEventPublisher sessionEventPublisher() {
+           return new HttpSessionEventPublisher();
+       }*/
+   }
+   ```
+
+4. 测试
+
++++
+
+## 八、CSRF漏洞保护
+
+- CSRF 简介
+
+- CSRF 防御&基本配置
+- 实战
+
+### 1 简介
+
+CSRF (Cross-Site Request Forgery 跨站请求伪造)，也可称为一键式攻击 (one-click-attack），通常缩写为 `CSRF` 或者 `XSRF`。
+
+`CSRF` 攻击是一种挟持用户在当前已登录的浏览器上发送恶意请求的攻击方法。相对于XSS利用用户对指定网站的信任，CSRF则是利用网站对用户网页浏览器的信任。简单来说，CSRF是致击者通过一些技术手段欺骗用户的浏览器，去访问一个用户曾经认证过的网站并执行恶意请求，例如发送邮件、发消息、甚至财产操作(如转账和购买商品)。由于客户端(浏览器)已经在该网站上认证过，所以该网站会认为是真正用户在操作而执行请求（实际上这个并非用户的本意）。
+
+**举个简单的例子：**
+
+假设 blr 现在登录了某银行的网站准备完成一项转账操作，转账的链接如下：
+
+**https: //bank .xxx .com/withdraw?account=blr&amount=1000&for=zhangsan**
+
+可以看到，这个链接是想从 blr 这个账户下转账 1000 元到 zhangsan 账户下，假设blr 没有注销登录该银行的网站，就在同一个浏览器新的选项卡中打开了一个危险网站，这个危险网站中有一幅图片，代码如下：
+
+**<img src="https ://bank.xxx.com/withdraw?account=blr&amount=1000&for=lisi">**
+
+一旦用户打开了这个网站，这个图片链接中的请求就会自动发送出去。由于是同一个浏览器并且用户尚未注销登录，所以该请求会自动携带上对应的有效的 Cookie 信息，进而完成一次转账操作。这就是跨站请求伪造。
+
+
+
+### 2 CSRF攻击演示
+
+#### 2.1 创建银行应用
+
+- 引入依赖
+
+  ```xml
+  <dependency>
+     <groupId>org.springframework.boot</groupId>
+     <artifactId>spring-boot-starter-security</artifactId>
+  </dependency>
+  <dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-web</artifactId>
+  </dependency>
+  ```
+
+- 修改配置
+
+  ```properties
+  # 应用服务 WEB 访问端口
+  server.port=8080
+  ```
+
+  ```java
+  /**
+   * 自定义 Security 的配置
+   */
+  @Configuration
+  public class SecurityConfig extends WebSecurityConfigurerAdapter {
+      // 内存数据源
+      @Bean
+      public UserDetailsService userDetailsService() {
+          InMemoryUserDetailsManager inMemoryUserDetailsManager = new InMemoryUserDetailsManager();
+          inMemoryUserDetailsManager.createUser(User.withUsername("root").password("{noop}123").roles("admin").build());
+          return inMemoryUserDetailsManager;
+      }
+  
+      // 指定全局 AuthenticationManager 使用内存数据源
+      @Override
+      protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+          auth.userDetailsService(userDetailsService());
+      }
+  
+      @Override
+      protected void configure(HttpSecurity http) throws Exception {
+          http.authorizeRequests()
+                  .anyRequest().authenticated()
+                  .and()
+                  .formLogin()
+                  .and()
+                  .csrf().disable(); // 关闭CSRF跨站请求保护
+      }
+  }
+  ```
+
+- 创建 controller 并启动启动
+
+  ```java
+  @RestController
+  public class HelloController {
+  
+      @GetMapping("/index")
+      public String index() {
+          return "index ok";
+      }
+  
+      @PostMapping("/withdraw")
+      public String withdraw() {
+          System.out.println("执行一次转账操作");
+          return "执行一次转账操作";
+      }
+  }
+  ```
+
+
+
+#### 2.2 创建恶意应用
+
+- 创建简单 springboot 应用
+
+- 修改配置
+
+  ```properties
+  # 应用服务 WEB 访问端口
+  server.port=8081
+  ```
+
+- 准备攻击页面
+
+  ```html
+  <!DOCTYPE html>
+  <html lang="en">
+  <head>
+      <meta charset="UTF-8">
+      <title>Title</title>
+  </head>
+  <body>
+  <form action="http://localhost:8080/withdraw" method="post">
+      <input name="name" type="hidden" value="blr"/>
+      <input name="money" type="hidden" value="10000">
+      <input type="submit" value="点我">
+  </form>
+  </body>
+  </html>
+  ```
+
+- 测试
+
+
+
+### 3 CSRF防御
+
+**CSRF**攻击的根源在于浏览器默认的身份验证机制(自动携带当前网站的Cookie信息)，这种机制虽然可以保证请求是来自用户的某个浏览器，但是无法确保这请求是用户授权发送。攻击者和用户发送的请求一模一样，这意味着我们没有办法去直接拒绝这里的某一个请求。如果能在合法请求中额外携带一个攻击者无法获取的参数，就可以成功区分出两种不同的请求，进而直接拒绝掉恶意请求。在 SpringSecurity 中就提供了这种机制来防御 CSRF 攻击，这种机制我们称之为`令牌同步模式`。
+
+
+
+#### 3.1 令牌同步模式
+
+这是目前主流的 CSRF 攻击防御方案。具体的操作方式就是在每一个 HTTP 请求中，除了默认自动携带的 Cookie 参数之外，再提供一个安全的、随机生成的宇符串，我们称之为 CSRF 令牌。这个 CSRF 令牌由服务端生成，生成后在 HtpSession 中保存一份。当前端请求到达后，将请求携带的 CSRF 令牌信息和服务端中保存的令牌进行对比，如果两者不相等，则拒绝掉该 HITTP 请求。
+
+> **注意:** 考虑到会有一些外部站点链接到我们的网站，所以我们要求请求是幂等的，这样对子HEAD、OPTIONS、TRACE 等方法就没有必要使用 CSRF 令牌了，强行使用可能会导致令牌泄露！
+
+
+
+#### 3.2 开启CSRF防御
+
+```java
+/**
+ * 自定义 Security 的配置
+ */
+@Configuration
+public class SecurityConfig extends WebSecurityConfigurerAdapter {
+    // 内存数据源
+    @Bean
+    public UserDetailsService userDetailsService() {
+        InMemoryUserDetailsManager inMemoryUserDetailsManager = new InMemoryUserDetailsManager();
+        inMemoryUserDetailsManager.createUser(User.withUsername("root").password("{noop}123").roles("admin").build());
+        return inMemoryUserDetailsManager;
+    }
+
+    // 指定全局 AuthenticationManager 使用内存数据源
+    @Override
+    protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+        auth.userDetailsService(userDetailsService());
+    }
+
+    @Override
+    protected void configure(HttpSecurity http) throws Exception {
+        http.authorizeRequests()
+                .anyRequest().authenticated()
+                .and()
+                .formLogin()
+                .and()
+                //.csrf().disable(); // 关闭CSRF跨站请求保护
+                .csrf(); // 开启CSRF防御
+    }
+}
+```
+
+
+
+#### 3.3 查看登录页面源码
+
+![image-20230111173653280](10-SpringSecurity.assets/image-20230111173653280.png)
+
+
+
+### 4 传统web开发使用CSRF
+
+开启CSRF防御后会自动在提交的表单中加入如下代码，如果不能自动加入，需要在开启之后手动加入如下代码，并随着请求提交。获取服务端令牌方式如下:
+
+```html
+<input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
+```
+
+1. 开发测试Controller
+
+   ```java
+   @Controller
+   public class HelloController {
+       @PostMapping("/hello")
+       @ResponseBody
+       public String hello() {
+           System.out.println("Hello OK!");
+           return "hello ok!";
+       }
+   
+       @GetMapping("/index")
+       public String index() {
+           return "index";
+       }
+   }
+   ```
+
+2. 创建 index.html
+
+   ```html
+   <!DOCTYPE html>
+   <html lang="en" xmlns:th="http://www.thymeleaf.org">
+   <head>
+       <meta charset="UTF-8">
+       <title>测试开启CSRF</title>
+   </head>
+   <body>
+   <h1>主页</h1>
+   <form method="post" th:action="@{/hello}">
+       信息：<input name="name" type="text"> <br>
+       <input type="submit" value="提交">
+   </form>
+   </body>
+   </html>
+   ```
+
+3. 测试查看index.html源码
+
+   ![image-20230111180633213](10-SpringSecurity.assets/image-20230111180633213.png)
+
+
+
+### 5 前后端分离使用CSRF
+
+前后端分离开发时，只需要将生成 csrf 放入到 cookie 中，并在请求时获取 cookie 中令牌信息进行提交即可。
+
+1. 修改 CSRF 存入 Cookie
+
+   ```java
+   @Override
+   protected void configure(HttpSecurity http) throws Exception {
+       http.authorizeRequests()
+               .anyRequest().authenticated()
+               .and()
+               .formLogin()
+               //.and().csrf().disable();
+               .and()
+               .csrf()
+               .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse()); // 将令牌保存到cookie中，允许cookie前端获取
+   
+       http.addFilterAt(loginFilter(), UsernamePasswordAuthenticationFilter.class);
+   }
+   ```
+
+2. 访问登录界面查看 cookie
+
+   ![image-20230111190458400](10-SpringSecurity.assets/image-20230111190458400.png)
+
+3. 发送请求携带令牌即可
+
+   - 请求参数中携带令牌
+
+     ```yml
+     key: _csrf  
+     value: "xxx"
+     ```
+
+   - 请求头中携带令牌
+
+     ```yaml
+     X-XSRF-TOKEN: value
+     ```
+
++++
+
+## 九、跨域
+
+- Spring 处理方案。
+- Spring Security 处理方案。
+
+### 1 简介
+
+跨域问题是实际应用开发中一个非常常见的需求，在 Spring 框架中对于跨域问题的处理方案有好几种，引入了 Spring Security 之后，跨域问题的处理方案又增加了。
+
+
+
+### 2 什么是CORS
+
+CORS (Cross-Origin Resource Sharing) 是由W3C制定的一种跨域资源共享技术标准，其目的就是为了解决前端的跨域请求。在JavaEE开发中，最常见的前端跨域请求解决方案是早期的JSONP，但是 JSONP 只支持 GET 请求，这是一个很大的缺陷，而 CORS 则支特多种 HTTP 请求方法，也是目前主流的跨域解决方案。
+
+CORS 中新增了一组 HTTP 请求头字段，通过这些字段，服务器告诉浏览器，那些网站通过浏览器有权限访问哪些资源。同时规定，对那些可能修改服务器数据的HTTP请求方法（如GET以外的 HTTP 请求等)，浏览器必须首先使用 OPTIONS 方法发起一个预检请求(prenightst)，预检请求的目的是查看服务端是否支持即将发起的跨域请求，如果服务端允许，才发送实际的 HTTP 请求。在预检请求的返回中，服务器端也可以通知客户端，是否需要携带身份凭证（如 Cookies、HTTP 认证信息等）。
+
+>  CORS: 同源/同域 = 协议+主机+端口
+
+
+
+#### 2.1 简单请求
+
+GET 请求为例，如果需要发起一个跨域请求，则请求头如下：
+
+```http
+Host: localhost:8080
+Origin: http://localhost:8081
+Referer: http://localhost:8081/index.html
+```
+
+如果服务端支持该跨域请求，那么返回的响应头中将包含如下字段：
+
+```http
+Access-Control-Allow-Origin:http://localhost: 8081
+```
+
+Access-Control-Allow-Origin 字段用来告诉浏览器可以访问该资源的域，当浏览器收到这样的响应头信息之后，提取出 Access-Control-Allow-Origin 字段中的值，发现该值包含当前页面所在的域，就知道这个跨域是被允许的，因此就不再对前端的跨域请求进行限制。这属于简单请求，即不需要进行预检请求的跨域。
+
+
+
+#### 2.2 非简单请求
+
+对于一些非简单请求，会首先发送一个预检请求。预检请求类似下面这样：
+
+```http
+OPTIONS /put HTTP/1.1
+Host: localhost:8080
+Connection: keep-alive
+Accept: */*
+Access-Control-Request-Method:PUT
+Origin: http://localhost: 8081
+Referer:http://localhost:8081/index.html
+```
+
+请求方法是 OPTIONS，请求头Origin 就告诉服务端当前页面所在域，请求头 Access-Control-Request-Methods 告诉服务器端即将发起的跨域请求所使用的方法。服务端对此进行判断，如果允许即将发起的跨域请求，则会给出如下响应：
+
+```http
+HTTP/1.1 200
+Access-Control-Allow-Origin:http://localhost: 8081
+Access-Control-Request-Methods: PUT
+Access-Control-Max-Age: 3600
+```
+
+Access-Control-Allow-Metbods 字段表示允许的跨域方法；Access-Control-Max-Age 字段表示预检请求的有效期，单位为秒，在有效期内如果发起该跨域请求，则不用再次发起预检请求。预检请求结朿后，接下来就会发起一个真正的跨域请求，跨域请求和前面的简单请求跨域步骤类似。
+
+
+
+### 3 Spring跨域解决方案
+
+#### 3.1 @CrossOrigin
+
+Spring 中第一种处理跨域的方式是通过@CrossOrigin 注解来标记支持跨域，该注解可以添加在方法上，也可以添加在 Controller 上。当添加在 Controller 上时，表示 Controller 中的所有接口都支持跨域，具体配置如下：
+
+```java
+@RestController
+//@CrossOrigin // 代表类中的所有方法允许跨域 springmvc 注解解决方案
+public class DemoController {
+    @GetMapping("/demo")
+    @CrossOrigin(origins = {"http://localhost:63342"}) // 用来解决允许跨域访问注解
+    // @CrossOrigin
+    public String demo() {
+        System.out.println("Demo OK!");
+        return "demo ok!";
+    }
+}
+```
+
+@CrossOrigin 注解各属性含义如下：
+
+- alowCredentials：浏览器是否应当发送凭证信息，如 Cookie。
+
+- allowedHeaders：请求被允许的请求头字段，`*`表示所有字段。
+
+- exposedHeaders：哪些响应头可以作为响应的一部分暴露出来。
+
+  `注意，这里只可以一一列举，通配符 * 在这里是无效的。`
+
+- maxAge：预检请求的有效期，有效期内不必再次发送预检请求，默认是`1800 `秒。
+
+- methods：允许的请求方法，`*`表示允许所有方法。
+
+- origins：允许的域，`*`表示允许所有域。
+
+
+
+#### 3.2 addCorsMappings
+
+@CrossOrigin 注解需要添加在不同的 Controller 上。所以还有一种全局配置方法，就是通过重写 WebMvcConfigurer#addCorsMappings 方法来实现，具体配置如下：
+
+```java
+/**
+ * @description: 自定义 mvc 配置类
+ */
+@Configuration
+public class WebMvcConfig implements WebMvcConfigurer {
+    /**
+     * 用来全局处理跨域
+     *
+     * @param registry
+     */
+    @Override
+    public void addCorsMappings(CorsRegistry registry) {
+        registry.addMapping("/**") // 对哪些请求进行跨域处理
+                .allowCredentials(false)
+                .allowedHeaders("*")
+                .allowedMethods("*")
+                .allowedOrigins("*")
+                .maxAge(3600);
+    }
+}
+```
+
+
+
+#### 3.3 CrosFilter
+
+Cors Filter 是Spring Web 中提供的一个处理跨域的过滤器，开发者也可以通过该过该过滤器处理跨域。
+
+```java
+@Configuration
+public class WebMvcConfig {
+    @Bean
+    FilterRegistrationBean<CorsFilter> corsFilter() {
+        FilterRegistrationBean<CorsFilter> registrationBean = new FilterRegistrationBean<>();
+        CorsConfiguration corsConfiguration = new CorsConfiguration();
+        corsConfiguration.setAllowedHeaders(Arrays.asList("*"));
+        corsConfiguration.setAllowedMethods(Arrays.asList("*"));
+        corsConfiguration.setAllowedOrigins(Arrays.asList("*"));
+        corsConfiguration.setMaxAge(3600L);
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", corsConfiguration);
+        registrationBean.setFilter(new CorsFilter(source));
+        registrationBean.setOrder(-1);//filter 0 1
+        return registrationBean;
+    }
+}
+```
+
+
+
+### 4 SpringSecurity跨域解决方案
+
+#### 4.1 原理分析
+
+当我们为项目添加了 Spring Security 依赖之后，发现上面三种跨域方式有的失效了，有的则可以继续使用，这是怎么回事？
+
+通过 @CrossOrigin 注解或者重写 addCorsMappings 方法配置跨域，统统失效了，通过
+CorsFilter 配置的跨域，有没有失效则要看过滤器的优先级，如果过滤器优先级高于 SpringSecurity 过滤器，即先于 Spring Security 过滤器执行，则 CorsFiter 所配置的跨域处理依然有效；如果过滤器优先级低于 SpringSecurity 过滤器，则 CorsFilter 所配置的跨域处理就会失效。
+
+为了理清楚这个问题，我们先简略了解一下 Filter、DispatchserServlet 以及Interceptor 执行顺序。
+
+![image-20220521074711128](10-SpringSecurity.assets/image-20220521074711128.png)
+
+理清楚了执行顺序，我们再来看跨域请求过程。由于非简单请求都要首先发送一个预检请求(request)，而预检请求并不会携带认证信息，所以预检请求就有被SpringSecurity 拦截的可能。因此通过 @CrossOrigin 注解或者重写 addCorsMappings 方法配置跨域就会失效。如果使用 CorsFilter 配置的跨域，只要过滤器优先级高于 SpringSecurity 过滤器就不会有问题。反之同样会出现问题。
+
+
+
+#### 4.2 解决方案
+
+Spring Security 中也提供了更专业的方式来解决预检请求所面临的问题。如：
+
+```java
+package com.shanhai14.config;
+
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+import java.util.Arrays;
+
+/**
+ * @description: 自定义 security 配置
+ */
+@Configuration
+public class SecurityConfig extends WebSecurityConfigurerAdapter {
+
+    @Override
+    protected void configure(HttpSecurity http) throws Exception {
+        http.authorizeRequests()
+                .anyRequest().authenticated()
+                .and().formLogin()
+                .and()
+                .cors() // 跨域处理方案
+                .configurationSource(configurationSource())
+                .and().csrf().disable();
+    }
+
+    public CorsConfigurationSource configurationSource() {
+        CorsConfiguration corsConfiguration = new CorsConfiguration();
+        corsConfiguration.setAllowedHeaders(Arrays.asList("*"));
+        corsConfiguration.setAllowedMethods(Arrays.asList("*"));
+        corsConfiguration.setAllowedOrigins(Arrays.asList("*"));
+        corsConfiguration.setMaxAge(3600L);
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", corsConfiguration);
+        return source;
+    }
+}
+```
+
++++
+
+## 十、异常处理
+
+- Spring Security 异常体系
+- 自定义异常配置
 
 
 
