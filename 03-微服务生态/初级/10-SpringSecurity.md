@@ -1913,7 +1913,7 @@ public class KaptchaConfig {
 
 - **Pbkdf2PasswordEncoder**
 
-  Pbkdf2PasswordEncoder 使用 PBKDF2 算法对密码进行加密，和前面几种类似，PBKDF2算法也是一种故意降低运算速度的算法，当需要 FIPS (Federal Information Processing Standard,美国联邦信息处理标准）认证时，PBKDF2 算法是一个很好的选择。
+  Pbkdf2PasswordEncoder 使用 PBKDF2 算法对密码进行加密，和前面几种类似，PBKDF2算法也是一种故意降低运算速度的算法，当需要 FIPS (Federal Information Processing Standard，美国联邦信息处理标准）认证时，PBKDF2 算法是一个很好的选择。
 
 - **SCryptPasswordEncoder**
 
@@ -2240,7 +2240,9 @@ public final class PasswordEncoderFactories {
       @Bean
       public UserDetailsService userDetailsService() {
           InMemoryUserDetailsManager inMemoryUserDetailsManager = new InMemoryUserDetailsManager();
-          inMemoryUserDetailsManager.createUser(User.withUsername("root").password("$2a$10$h12eiKc00lh/JPtPFVENEuMLtYRHHgiE/5FPNjI79IrOizApSN0VC").roles("admin").build());
+          inMemoryUserDetailsManager.createUser(User.withUsername("root")
+                                                .password("$2a$10$h12eiKc00lh/JPtPFVENEuMLtYRHHgiE/5FPNjI79IrOizApSN0VC")
+                                                .roles("admin").build());
           return inMemoryUserDetailsManager;
       }
   
@@ -2271,7 +2273,9 @@ public final class PasswordEncoderFactories {
       public UserDetailsService userDetailsService() {
           InMemoryUserDetailsManager inMemoryUserDetailsManager = new InMemoryUserDetailsManager();
           // 使用 passwordEncoder 第二种方式
-          inMemoryUserDetailsManager.createUser(User.withUsername("root").password("{bcrypt}$2a$10$h12eiKc00lh/JPtPFVENEuMLtYRHHgiE/5FPNjI79IrOizApSN0VC").roles("admin").build());
+          inMemoryUserDetailsManager.createUser(User.withUsername("root")
+                                                .password("{bcrypt}$2a$10$h12eiKc00lh/JPtPFVENEuMLtYRHHgiE/5FPNjI79IrOizApSN0VC")
+                                                .roles("admin").build());
           return inMemoryUserDetailsManager;
       }
   
@@ -2729,7 +2733,7 @@ RememberMe 这个功能非常常见，下图就是 QQ邮箱 登录时的“记�
 
 ![image-20220317194843649](10-SpringSecurity.assets/image-20220317194843649.png)
 
-从上图中，当在SecurityConfig配置中开启了"记住我"功能之后,在进行认证时如果勾选了"记住我"选项，此时打开浏览器控制台，分析整个登录过程。首先当我们登录时，在登录请求中多了一个 RememberMe 的参数。
+从上图中，当在SecurityConfig配置中开启了"记住我"功能之后，在进行认证时如果勾选了"记住我"选项，此时打开浏览器控制台，分析整个登录过程。首先当我们登录时，在登录请求中多了一个 remember-me 的参数。
 
 ![image-20220308191736005](10-SpringSecurity.assets/image-20220308191736005.png)
 
@@ -2798,7 +2802,7 @@ processAutoLoginCookie 方法主要用来验证 Cookie 中的令牌信息是否�
 ![image-20230110224505465](10-SpringSecurity.assets/image-20230110224505465.png)
 
 1. 不同于 TokonBasedRemornberMeServices 中的 processAutologinCookie 方法，这里cookieTokens 数组的长度为2，第一项是series，第二项是 token。
-2. 从cookieTokens数组中分到提取出 series 和 token；然后根据 series 去内存中查询出一个 PersistentRememberMeToken对象。如果查询出来的对象为null，表示内存中并没有series对应的值，本次自动登录失败。如果查询出来的 token 和从 cookieTokens 中解析出来的token不相同，说明自动登录会牌已经泄漏（恶意用户利用令牌登录后，内存中的token变了)，此时移除当前用户的所有自动登录记录并抛出异常。
+2. 从cookieTokens数组中分到提取出 series 和 token；然后根据 series 去内存中查询出一个 PersistentRememberMeToken对象。如果查询出来的对象为null，表示内存中并没有series对应的值，本次自动登录失败。如果查询出来的 token 和从 cookieTokens 中解析出来的token不相同，说明自动登录令牌已经泄漏(恶意用户利用令牌登录后，内存中的token变了)，此时移除当前用户的所有自动登录记录并抛出异常。
 3. 根据数据库中查询出来的结果判断令牌是否过期，如果过期就抛出异常。
 4. 生成一个新的 PersistentRememberMeToken 对象，用户名和series 不变，token 重新生成，date 也使用当前时间。newToken 生成后，根据 series 去修改内存中的 token 和 date(即每次自动登录后都会产生新的 token 和 date）
 5. 调用 addCookie 方法添加 Cookie，在addCookie 方法中，会调用到我们前面所说的
@@ -2812,7 +2816,6 @@ processAutoLoginCookie 方法主要用来验证 Cookie 中的令牌信息是否�
 ```java
 @Configuration
 public class SecurityConfig extends WebSecurityConfigurerAdapter {
-
     @Bean
     public UserDetailsService userDetailsService() {
         InMemoryUserDetailsManager inMemoryUserDetailsManager = new InMemoryUserDetailsManager();
@@ -2835,7 +2838,7 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
                 .and()
                 .rememberMe() // 开启记住我功能
                 .rememberMeServices(rememberMeServices()) // 指定 RememberMeService 的实现
-                //.rememberMeParameter("remember-me") // 用来接收请求中哪个参数作为开启记住我的参数
+                // .rememberMeParameter("remember-me") // 用来接收请求中哪个参数作为开启记住我的参数
                 // .alwaysRemember(true) // 总是记住我
                 .and()
                 .csrf().disable();
@@ -3290,9 +3293,9 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
 
 1. sessionManagement() 用来开启会话管理
 
-   maximumSessions(1) 指定会话的并发数为 1。
+   maximumSessions(1) 指定会话的并发数为 1
 
-2. HttpSessionEventPublisher 提供一个 HttpSessionEvenePubishor-实例。Spring Security中通过一个 Map 集合来集护当前的 HttpSession 记录，进而实现会话的并发管理。当用户登录成功时，就向集合中添加一条Http Session 记录；当会话销毁时，就从集合中移除一条 Httpsession 记录。HtpSesionEvenPublisher 实现了 Http SessionListener 接口，可以监听到 HtpSession 的创建和销毀事件，并将 Http Session 的创建/销毁事件发布出去，这样，当有 HttpSession 销毀时，Spring Security 就可以感知到该事件了。
+2. HttpSessionEventPublisher 提供一个 HttpSessionEvenePubishor-实例。Spring Security中通过一个 Map 集合来集护当前的 HttpSession 记录，进而实现会话的并发管理。当用户登录成功时，就向集合中添加一条HttpsSession 记录；当会话销毁时，就从集合中移除一条 Httpsession 记录。HtpSesionEvenPublisher 实现了 Http SessionListener 接口，可以监听到 HtpSession 的创建和销毀事件，并将 HttpSession 的创建/销毁事件发布出去，这样，当有 HttpSession 销毀时，Spring Security 就可以感知到该事件了。
 
 
 
@@ -3512,11 +3515,11 @@ CSRF (Cross-Site Request Forgery 跨站请求伪造)，也可称为一键式攻�
 
 假设 blr 现在登录了某银行的网站准备完成一项转账操作，转账的链接如下：
 
-**https: //bank .xxx .com/withdraw?account=blr&amount=1000&for=zhangsan**
+**`https://bank.xxx.com/withdraw?account=blr&amount=1000&for=zhangsan`**
 
 可以看到，这个链接是想从 blr 这个账户下转账 1000 元到 zhangsan 账户下，假设blr 没有注销登录该银行的网站，就在同一个浏览器新的选项卡中打开了一个危险网站，这个危险网站中有一幅图片，代码如下：
 
-**<img src="https ://bank.xxx.com/withdraw?account=blr&amount=1000&for=lisi">**
+**<img src="https://bank.xxx.com/withdraw?account=blr&amount=1000&for=lisi">**
 
 一旦用户打开了这个网站，这个图片链接中的请求就会自动发送出去。由于是同一个浏览器并且用户尚未注销登录，所以该请求会自动携带上对应的有效的 Cookie 信息，进而完成一次转账操作。这就是跨站请求伪造。
 
@@ -3641,7 +3644,7 @@ CSRF (Cross-Site Request Forgery 跨站请求伪造)，也可称为一键式攻�
 
 #### 3.1 令牌同步模式
 
-这是目前主流的 CSRF 攻击防御方案。具体的操作方式就是在每一个 HTTP 请求中，除了默认自动携带的 Cookie 参数之外，再提供一个安全的、随机生成的宇符串，我们称之为 CSRF 令牌。这个 CSRF 令牌由服务端生成，生成后在 HtpSession 中保存一份。当前端请求到达后，将请求携带的 CSRF 令牌信息和服务端中保存的令牌进行对比，如果两者不相等，则拒绝掉该 HITTP 请求。
+这是目前主流的 CSRF 攻击防御方案。具体的操作方式就是在每一个 HTTP 请求中，除了默认自动携带的 Cookie 参数之外，再提供一个安全的、随机生成的宇符串，我们称之为 CSRF 令牌。这个 CSRF 令牌由服务端生成，生成后在 HttpSession 中保存一份。当前端请求到达后，将请求携带的 CSRF 令牌信息和服务端中保存的令牌进行对比，如果两者不相等，则拒绝掉该 HITTP 请求。
 
 > **注意:** 考虑到会有一些外部站点链接到我们的网站，所以我们要求请求是幂等的，这样对子HEAD、OPTIONS、TRACE 等方法就没有必要使用 CSRF 令牌了，强行使用可能会导致令牌泄露！
 
@@ -3790,7 +3793,7 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
 - Spring 处理方案。
 - Spring Security 处理方案。
 
-### 1 简介
+### 1 简介
 
 跨域问题是实际应用开发中一个非常常见的需求，在 Spring 框架中对于跨域问题的处理方案有好几种，引入了 Spring Security 之后，跨域问题的处理方案又增加了。
 
@@ -3922,7 +3925,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
 
 #### 3.3 CrosFilter
 
-Cors Filter 是Spring Web 中提供的一个处理跨域的过滤器，开发者也可以通过该过该过滤器处理跨域。
+CorsFilter 是Spring Web 中提供的一个处理跨域的过滤器，开发者也可以通过该过该过滤器处理跨域。
 
 ```java
 @Configuration
@@ -3980,7 +3983,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import java.util.Arrays;
 
 /**
- * @description: 自定义 security 配置
+ * 自定义 security 配置
  */
 @Configuration
 public class SecurityConfig extends WebSecurityConfigurerAdapter {
@@ -4016,91 +4019,1074 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
 - Spring Security 异常体系
 - 自定义异常配置
 
+### 1 异常体系
 
+Spring Security 中异常主要分为两大类：
 
+1. AuthenticationException：认证异常
+2. AccessDeniedException：授权异常
 
+其中认证所涉及异常类型比较多，默认提供的异常类型如下：
 
+![image-20220430213210778](10-SpringSecurity.assets/image-20220430213210778.png)
 
+相比于认证异常，权限异常类就要少了很多，默认提供的权限异常如下：
 
+![image-20220430213344621](10-SpringSecurity.assets/image-20220430213344621.png)
 
+在实际项目开发中，如果默认提供异常无法满足需求时，就需要根据实际需要来自定义异常类。
 
 
 
+### 2 自定义异常处理配置
 
+```java
+@Configuration
+public class SecurityConfig extends WebSecurityConfigurerAdapter {
+    @Bean
+    public UserDetailsService userDetailsService() {
+        InMemoryUserDetailsManager inMemoryUserDetailsManager = new InMemoryUserDetailsManager();
+        inMemoryUserDetailsManager.createUser(User.withUsername("root").password("{noop}123").roles("ADMIN").build());
+        inMemoryUserDetailsManager.createUser(User.withUsername("lisi").password("{noop}123").roles("USER").build());
+        return inMemoryUserDetailsManager;
+    }
 
+    @Override
+    protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+        auth.userDetailsService(userDetailsService());
+    }
 
+    @Override
+    protected void configure(HttpSecurity http) throws Exception {
+        http.authorizeRequests()
+                .mvcMatchers("/hello").hasRole("ADMIN") // 访问 /hello 必须具有 ADMIN 权限
+                .anyRequest().authenticated() // 所有请求必须认证
+                .and()
+                .exceptionHandling() // 异常处理
+                .authenticationEntryPoint((request, response, ex) -> {
+                    response.setContentType("application/json;charset=UTF-8");
+                    response.setStatus(HttpStatus.UNAUTHORIZED.value());
+                    response.getWriter().write("尚未认证，请进行认证操作！");
+                }) // 认证异常处理
+                .accessDeniedHandler((request, response, ex) -> {
+                    response.setContentType("application/json;charset=UTF-8");
+                    response.setStatus(HttpStatus.FORBIDDEN.value());
+                    response.getWriter().write("无权访问!");
+                }) // 授权异常处理
+                .and().formLogin()
+                .and().csrf().disable();
+    }
+}
+```
 
++++
 
+## 十一、授权
 
+- 什么是权限管理
+- 权限管理核心概念
+- Spring Security 权限管理策略
+- 基于 URL 地址的权限管理
+- 基于方法的权限管理
+- 实战
 
+### 1 权限管理
 
+#### 1.1 认证
 
+**`身份认证`**，就是判断一个用户是否为合法用户的处理过程。Spring Security 中支持多种不同方式的认证，但是无论开发者使用那种方式认证，都不会影响授权功能使用。因为 Spring Security 很好做到了认证和授权解耦。
 
 
 
+#### 1.2 授权
 
+**`授权`**，即访问控制，控制谁能访问哪些资源。简单的理解授权就是根据系统提前设置好的规则，给用户分配可以访问某一个资源的权限，用户根据自己所具有权限，去执行相应操作。
 
 
 
+### 2 授权核心概念
 
+在前面学习认证过程中，我们得知认证成功之后会将当前登录用户信息保存到 Authentication 对象中，Authentication 对象中有一个 getAuthorities() 方法，用来返回当前登录用户具备的权限信息，也就是当前用户具有权限信息。该方法的返回值为 Collection<? extends GrantedAuthority>，当需要进行权限判断时，就回根据集合返回权限信息调用相应方法进行判断。
 
+![image-20220523110143445](10-SpringSecurity.assets/image-20220523110143445.png)
 
+那么问题来了，针对于这个返回值 GrantedAuthority 应该如何理解呢？是角色还是权限？
 
+我们针对于授权可以是`基于角色权限管理`和`基于资源权限管理`，从设计层面上来说，角色和权限是两个完全不同的东西：权限是一些具体操作，角色则是某些权限集合。如：READ_BOOK 和 ROLE_ADMIN 是完全不同的。因此至于返回值是什么取决于你的业务设计情况：
 
+- 基于角色权限设计就是: `用户<=>角色<=>资源` 三者关系 返回就是用户的`角色` 
 
+- 基于资源权限设计就是: `用户<=>权限<=>资源` 三者关系 返回就是用户的`权限` 
 
+- 基于角色和资源权限设计就是: `用户<=>角色<=>权限<=>资源` 返回统称为用户的`权限`
 
+为什么可以统称为权限，因为从代码层面角色和权限没有太大不同都是权限，特别是在 Spring Security 中，角色和权限处理方式基本上都是一样的。唯一区别 SpringSecurity 在很多时候会自动给角色添加一个`ROLE_`前缀，而权限则不会自动添加。
+
+
+
+### 3 权限管理策略
+
+Spring Security 中提供的权限管理策略主要有两种类型:
+
+1. 基于过滤器(URL)的权限管理 (FilterSecurityInterceptor)：
+
+   基于过滤器的权限管理主要是用来拦截 HTTP 请求，拦截下来之后，根据 HTTP 请求地址进行权限校验。
 
+2. 基于 AOP (方法)的权限管理 (MethodSecurityInterceptor)：
 
+   基于 AOP 权限管理主要是用来处理方法级别的权限问题。当需要调用某一个方法时，通过 AOP 将操作拦截下来，然后判断用户是否具备相关的权限。
 
 
 
+### 4 基于URL的权限管理
 
+#### 4.1 实战
 
+- 开发 controller
 
+  ```java
+  @RestController
+  public class DemoController {
+  
+      @GetMapping("/admin") // ADMIN
+      public String admin() {
+          return "admin ok";
+      }
+  
+      @GetMapping("/user") // USER
+      public String user() {
+          return "user ok";
+      }
+  
+      @GetMapping("/getInfo") // READ_INFO
+      public String getInfo() {
+          return "info ok";
+      }
+  }
+  ```
 
+- 配置授权
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+  ```java
+  /**
+   * 自定义 security 配置类
+   */
+  @Configuration
+  public class SecurityConfig extends WebSecurityConfigurerAdapter {
+      //创建内存数据源
+      public UserDetailsService userDetailsService() {
+          InMemoryUserDetailsManager inMemoryUserDetailsManager = new InMemoryUserDetailsManager();
+          inMemoryUserDetailsManager.createUser(User.withUsername("root").password("{noop}123").roles("ADMIN", "USER").build());
+          inMemoryUserDetailsManager.createUser(User.withUsername("lisi").password("{noop}123").roles("USER").build());
+          inMemoryUserDetailsManager.createUser(User.withUsername("win7").password("{noop}123").authorities("READ_INFO").build());
+          return inMemoryUserDetailsManager;
+      }
+  
+      @Override
+      protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+          auth.userDetailsService(userDetailsService());
+      }
+  
+      @Override
+      protected void configure(HttpSecurity http) throws Exception {
+          http.authorizeRequests()
+                  .mvcMatchers("/admin").hasRole("ADMIN") // 具有 admin 角色 强大之处：通用，/admin /admin/ /admin.html
+                  .mvcMatchers("/user").hasRole("USER") // 具有 user 角色
+                  .mvcMatchers("/getInfo").hasAuthority("READ_INFO") // 具有 READ_INFO 权限
+                  .antMatchers("/admin").hasRole("ADMIN")
+                  // .regexMatchers().hasRole() // 注意：好处，支持正则表达式
+                  .anyRequest().authenticated()
+                  .and().formLogin()
+                  .and().csrf().disable();
+      }
+  }
+  ```
+
+- 启动项目测试
+
+
+
+#### 4.2 权限表达式
+
+![image-20230112155813402](10-SpringSecurity.assets/image-20230112155813402.png)
+
+| *方法*                                                       | *说明*                                                      |
+| ------------------------------------------------------------ | ----------------------------------------------------------- |
+| hasAuthority(String authority)                               | 当前用户是否具备指定权限                                    |
+| hasAnyAuthority(String... authorities)                       | 当前用户是否具备指定权限中任意一个                          |
+| hasRole(String role)                                         | 当前用户是否具备指定角色                                    |
+| hasAnyRole(String... roles)                                  | 当前用户是否具备指定角色中任意一个                          |
+| permitAll()                                                  | 放行所有请求/调用                                           |
+| denyAll()                                                    | 拒绝所有请求/调用                                           |
+| isAnonymous()                                                | 当前用户是否是一个匿名用户                                  |
+| isAuthenticated()                                            | 当前用户是否已经认证成功                                    |
+| isRememberMe()                                               | 当前用户是否通过 Remember-Me 自动登录                       |
+| isFullyAuthenticated()                                       | 当前用户是否既不是匿名用户又不是通过 Remember-Me 自动登录的 |
+| hasPermission(Object targetId, Object permission)            | 当前用户是否具备指定目标的指定权限信息                      |
+| hasPermission(Object targetId, String targetType, Object permission) | 当前用户是否具备指定目标的指定权限信息                      |
+
+
+
+### 5 基于方法的权限管理
+
+基于方法的权限管理主要是通过 A0P 来实现的，Spring Security 中通过 MethodSecurityInterceptor 来提供相关的实现。不同在于 FilterSecurityInterceptor 只是在请求之前进行前置处理，MethodSecurityInterceptor 除了前置处理之外还可以进行后置处理。前置处理就是在请求之前判断是否具备相应的权限，后置处理则是对方法的执行结果进行二次过滤。前置处理和后置处理分别对应了不同的实现类。
+
+
+
+#### 5.1 @EnableGlobalMethodSecurity
+
+EnableGlobalMethodSecurity 该注解是用来开启权限注解，用法如下：
+
+```java
+@Configuration
+@EnableGlobalMethodSecurity(prePostEnabled=true, securedEnabled=true, jsr250Enabled=true)
+public class SecurityConfig extends WebsecurityConfigurerAdapter{}
+```
+
+- **perPostEnabled**: 开启 Spring Security 提供的四个权限注解，@PostAuthorize、@PostFilter、@PreAuthorize 以及 @PreFilter。
+- **securedEnabled**: 开启 Spring Security 提供的 @Secured 注解支持，该注解不支持权限表达式
+- **jsr250Enabled**: 开启 JSR-250 提供的注解，主要是 @DenyAll、@PermitAll、@RolesAll 同样这些注解也不支持权限表达式
+
+以上注解含义如下:
+- @PostAuthorize：在目标方法执行之后进行权限校验。
+- @PostFiter：在目标方法执行之后对方法的返回结果进行过滤。
+- @PreAuthorize：在目标方法执行之前进行权限校验。
+- @PreFiter：在目前标方法执行之前对方法参数进行过滤。
+- @Secured：访问目标方法必须具各相应的角色。
+- @DenyAll：拒绝所有访问。
+- @PermitAll：允许所有访问。
+- @RolesAllowed：访问目标方法必须具备相应的角色。
+
+这些基于方法的权限管理相关的注解，一般来说只要设置 **`prePostEnabled=true`** 就够用了。
+
+
+
+#### 5.2 基本用法
+
+- 开启注解使用
+
+  ```java
+  @Configuration
+  @EnableGlobalMethodSecurity(prePostEnabled = true, securedEnabled = true, jsr250Enabled = true)
+  public class SecurityConfig extends WebSecurityConfigurerAdapter {}
+  ```
+
+- 使用注解
+
+  ```java
+  @RestController
+  @RequestMapping("/hello")
+  public class AuthorizeMethodController {
+  
+      //@PreAuthorize("hasAuthority('READ_INFO')")
+      @PreAuthorize("hasRole('ADMIN') and authentication.name=='root'")
+      @GetMapping
+      public String hello() {
+          return "hello";
+      }
+  
+      @PreAuthorize("authentication.name==#name")
+      @GetMapping("/name")
+      public String hello(String name) {
+          return "hello:" + name;
+      }
+  
+      @PreFilter(value = "filterObject.id%2!=0", filterTarget = "users") //filterTarget 必须是 数组 集合类型
+      @PostMapping("/users")
+      public void addUsers(@RequestBody List<User> users) {
+          System.out.println("users = " + users);
+      }
+  
+      @PostAuthorize("returnObject.id==1")
+      @GetMapping("/userId")
+      public User getUserById(Integer id) {
+          return new User(id, "blr");
+      }
+  
+      @PostFilter("filterObject.id%2==0") // 用来对方法的返回值进行过滤
+      @GetMapping("/lists")
+      public List<User> getAll() {
+          List<User> users = new ArrayList<>();
+          for (int i = 0; i < 10; i++) {
+              users.add(new User(i, "blr:" + i));
+          }
+          return users;
+      }
+  
+      @Secured({"ROLE_USER"}) //只能判断角色
+      @GetMapping("/secured")
+      public User getUserByUsername() {
+          return new User(99, "secured");
+      }
+  
+      @Secured({"ROLE_ADMIN", "ROLE_USER"}) //具有其中一个即可
+      @GetMapping("/username")
+      public User getUserByUsername2(String username) {
+          return new User(99, username);
+      }
+  
+      @PermitAll
+      @GetMapping("/permitAll")
+      public String permitAll() {
+          return "PermitAll";
+      }
+  
+      @DenyAll
+      @GetMapping("/denyAll")
+      public String denyAll() {
+          return "DenyAll";
+      }
+  
+      @RolesAllowed({"ROLE_ADMIN", "ROLE_USER"}) //具有其中一个角色即可
+      @GetMapping("/rolesAllowed")
+      public String rolesAllowed() {
+          return "RolesAllowed";
+      }
+  }
+  ```
+
+- 测试
+
+
+
+### 6 原理分析
+
+![image-20230112170400128](10-SpringSecurity.assets/image-20230112170400128.png)
+
+- **`ConfigAttribute`** 在 Spring Security 中，用户请求一个资源(通常是一个接口或者一个 Java 方法)需要的角色会被封装成一个 ConfigAttribute 对象，在 ConfigAttribute 中只有一个 getAttribute方法，该方法返回一个 String 字符串，就是角色的名称。一般来说，角色名称都带有一个 `ROLE_` 前缀，投票器 AccessDecisionVoter 所做的事情，其实就是比较用户所具各的角色和请求某个资源所需的 ConfigAtuibute 之间的关系。
+- **`AccesDecisionVoter 和 AccessDecisionManager`** 都有众多的实现类，在 AccessDecisionManager 中会换个遍历 AccessDecisionVoter，进而决定是否允许用户访问，因而 AaccesDecisionVoter 和 AccessDecisionManager 两者的关系类似于 AuthenticationProvider 和 ProviderManager 的关系。
+
+
+
+### 7 实战
+
+在前面的案例中，我们配置的 URL 拦截规则和请求 URL 所需要的权限都是通过代码来配置的，这样就比较死板，如果想要调整访问某一个 URL 所需要的权限，就需要修改代码。
+
+动态管理权限规则就是我们将 URL 拦截规则和访问 URI 所需要的权限都保存在数据库中，这样，在不修改源代码的情况下，只需要修改数据库中的数据，就可以对权限进行调整。
+
+`用户 <--中间表--> 角色 <--中间表--> 菜单`
+
+#### 7.1 库表设计
+
+![image-20230112174112598](10-SpringSecurity.assets/image-20230112174112598.png)
+
+```sql
+SET NAMES utf8mb4;
+SET FOREIGN_KEY_CHECKS = 0;
+-- ----------------------------
+-- Table structure for menu
+-- ----------------------------
+DROP TABLE IF EXISTS `menu`;
+CREATE TABLE `menu` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `pattern` varchar(128) DEFAULT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8;
+
+-- ----------------------------
+-- Records of menu
+-- ----------------------------
+BEGIN;
+INSERT INTO `menu` VALUES (1, '/admin/**');
+INSERT INTO `menu` VALUES (2, '/user/**');
+INSERT INTO `menu` VALUES (3, '/guest/**');
+COMMIT;
+
+-- ----------------------------
+-- Table structure for menu_role
+-- ----------------------------
+DROP TABLE IF EXISTS `menu_role`;
+CREATE TABLE `menu_role` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `mid` int(11) DEFAULT NULL,
+  `rid` int(11) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `mid` (`mid`),
+  KEY `rid` (`rid`),
+  CONSTRAINT `menu_role_ibfk_1` FOREIGN KEY (`mid`) REFERENCES `menu` (`id`),
+  CONSTRAINT `menu_role_ibfk_2` FOREIGN KEY (`rid`) REFERENCES `role` (`id`)
+) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8;
+
+-- ----------------------------
+-- Records of menu_role
+-- ----------------------------
+BEGIN;
+INSERT INTO `menu_role` VALUES (1, 1, 1);
+INSERT INTO `menu_role` VALUES (2, 2, 2);
+INSERT INTO `menu_role` VALUES (3, 3, 3);
+INSERT INTO `menu_role` VALUES (4, 3, 2);
+COMMIT;
+
+-- ----------------------------
+-- Table structure for role
+-- ----------------------------
+DROP TABLE IF EXISTS `role`;
+CREATE TABLE `role` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `name` varchar(32) DEFAULT NULL,
+  `nameZh` varchar(32) DEFAULT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8;
+
+-- ----------------------------
+-- Records of role
+-- ----------------------------
+BEGIN;
+INSERT INTO `role` VALUES (1, 'ROLE_ADMIN', '系统管理员');
+INSERT INTO `role` VALUES (2, 'ROLE_USER', '普通用户');
+INSERT INTO `role` VALUES (3, 'ROLE_GUEST', '游客');
+COMMIT;
+
+-- ----------------------------
+-- Table structure for user
+-- ----------------------------
+DROP TABLE IF EXISTS `user`;
+CREATE TABLE `user` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `username` varchar(32) DEFAULT NULL,
+  `password` varchar(255) DEFAULT NULL,
+  `enabled` tinyint(1) DEFAULT NULL,
+  `locked` tinyint(1) DEFAULT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8;
+
+-- ----------------------------
+-- Records of user
+-- ----------------------------
+BEGIN;
+INSERT INTO `user` VALUES (1, 'admin', '{noop}123', 1, 0);
+INSERT INTO `user` VALUES (2, 'user', '{noop}123', 1, 0);
+INSERT INTO `user` VALUES (3, 'blr', '{noop}123', 1, 0);
+COMMIT;
+
+-- ----------------------------
+-- Table structure for user_role
+-- ----------------------------
+DROP TABLE IF EXISTS `user_role`;
+CREATE TABLE `user_role` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `uid` int(11) DEFAULT NULL,
+  `rid` int(11) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `uid` (`uid`),
+  KEY `rid` (`rid`),
+  CONSTRAINT `user_role_ibfk_1` FOREIGN KEY (`uid`) REFERENCES `user` (`id`),
+  CONSTRAINT `user_role_ibfk_2` FOREIGN KEY (`rid`) REFERENCES `role` (`id`)
+) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8;
+
+-- ----------------------------
+-- Records of user_role
+-- ----------------------------
+BEGIN;
+INSERT INTO `user_role` VALUES (1, 1, 1);
+INSERT INTO `user_role` VALUES (2, 1, 2);
+INSERT INTO `user_role` VALUES (3, 2, 2);
+INSERT INTO `user_role` VALUES (4, 3, 3);
+COMMIT;
+SET FOREIGN_KEY_CHECKS = 1;
+```
+
+
+
+#### 7.2 创建springboot应用
+
+- 引入依赖
+
+  ```xml
+  <dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-security</artifactId>
+  </dependency>
+  <dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-web</artifactId>
+  </dependency>
+  
+  <dependency>
+    <groupId>mysql</groupId>
+    <artifactId>mysql-connector-java</artifactId>
+    <version>5.1.47</version>
+  </dependency>
+  <dependency>
+    <groupId>com.alibaba</groupId>
+    <artifactId>druid</artifactId>
+    <version>1.2.8</version>
+  </dependency>
+  <dependency>
+    <groupId>org.mybatis.spring.boot</groupId>
+    <artifactId>mybatis-spring-boot-starter</artifactId>
+    <version>2.2.2</version>
+  </dependency>
+  ```
+
+- 配置配置文件
+
+  ```properties
+  # 应用服务 WEB 访问端口
+  server.port=8080
+  spring.datasource.type=com.alibaba.druid.pool.DruidDataSource
+  spring.datasource.driver-class-name=com.mysql.jdbc.Driver
+  spring.datasource.url=jdbc:mysql://192.168.88.100:3306/security_authorize?characterEncoding=UTF-8
+  spring.datasource.username=root
+  spring.datasource.password=123456
+  mybatis.mapper-locations=classpath:mapper/*.xml
+  mybatis.type-aliases-package=com.shanhai17.entity
+  ```
+
+- 创建实体类
+
+  ```java
+  public class User implements UserDetails {
+      private Integer id;
+      private String password;
+      private String username;
+      private boolean enabled;
+      private boolean locked;
+      private List<Role> roles;
+  
+      @Override
+      public Collection<? extends GrantedAuthority> getAuthorities() {
+          return roles.stream().map(r -> new SimpleGrantedAuthority(r.getName())).collect(Collectors.toList());
+      }
+  
+      @Override
+      public String getPassword() {
+          return password;
+      }
+  
+      public void setPassword(String password) {
+          this.password = password;
+      }
+  
+      @Override
+      public String getUsername() {
+          return username;
+      }
+  
+      public void setUsername(String username) {
+          this.username = username;
+      }
+  
+      @Override
+      public boolean isAccountNonExpired() {
+          return true;
+      }
+  
+      @Override
+      public boolean isAccountNonLocked() {
+          return !locked;
+      }
+  
+      @Override
+      public boolean isCredentialsNonExpired() {
+          return true;
+      }
+  
+      @Override
+      public boolean isEnabled() {
+          return enabled;
+      }
+  
+      public void setEnabled(boolean enabled) {
+          this.enabled = enabled;
+      }
+  
+      public void setLocked(boolean locked) {
+          this.locked = locked;
+      }
+  
+      public Integer getId() {
+          return id;
+      }
+  
+      public void setId(Integer id) {
+          this.id = id;
+      }
+  
+      public List<Role> getRoles() {
+          return roles;
+      }
+  
+      public void setRoles(List<Role> roles) {
+          this.roles = roles;
+      }
+  }
+  ```
+
+  ```java
+  public class Role {
+      private Integer id;
+      private String name;
+      private String nameZh;
+  
+      public Integer getId() {
+          return id;
+      }
+  
+      public void setId(Integer id) {
+          this.id = id;
+      }
+  
+      public String getName() {
+          return name;
+      }
+  
+      public void setName(String name) {
+          this.name = name;
+      }
+  
+      public String getNameZh() {
+          return nameZh;
+      }
+  
+      public void setNameZh(String nameZh) {
+          this.nameZh = nameZh;
+      }
+  }
+  ```
+
+  ```java
+  public class Menu {
+      private Integer id;
+      private String pattern;
+      private List<Role> roles;
+  
+      public List<Role> getRoles() {
+          return roles;
+      }
+  
+      public void setRoles(List<Role> roles) {
+          this.roles = roles;
+      }
+  
+      public Integer getId() {
+          return id;
+      }
+  
+      public void setId(Integer id) {
+          this.id = id;
+      }
+  
+      public String getPattern() {
+          return pattern;
+      }
+  
+      public void setPattern(String pattern) {
+          this.pattern = pattern;
+      }
+  }
+  ```
+
+- 创建 mapper 接口
+
+  ```java
+  @Mapper
+  public interface UserMapper {
+      // 根据用户 id 获取角色信息
+      List<Role> getUserRoleByUid(Integer uid);
+  
+      // 根据用户名获取用户信息
+      User loadUserByUsername(String username);
+  }
+  ```
+
+  ```java
+  @Mapper
+  public interface MenuMapper {
+      List<Menu> getAllMenu();
+  }
+  ```
+
+- 创建 mapper 文件
+
+  ```xml
+  <!DOCTYPE mapper
+          PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+          "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+  <mapper namespace="com.blr.mapper.UserMapper">
+  
+      <select id="loadUserByUsername" resultType="com.blr.entity.User">
+          select *
+          from user
+          where username = #{username};
+      </select>
+  
+      <select id="getUserRoleByUid" resultType="com.blr.entity.Role">
+          select r.*
+          from role r,
+               user_role ur
+          where ur.uid = #{uid}
+            and ur.rid = r.id
+      </select>
+  </mapper>
+  ```
+
+  ```xml
+  <mapper namespace="com.blr.mapper.MenuMapper">
+      <resultMap id="MenuResultMap" type="com.blr.entity.Menu">
+          <id property="id" column="id"/>
+          <result property="pattern" column="pattern"></result>
+          <collection property="roles" ofType="com.blr.entity.Role">
+              <id column="rid" property="id"/>
+              <result column="rname" property="name"/>
+              <result column="rnameZh" property="nameZh"/>
+          </collection>
+      </resultMap>
+    
+      <select id="getAllMenu" resultMap="MenuResultMap">
+          select m.*, r.id as rid, r.name as rname, r.nameZh as rnameZh
+          from menu m
+                   left join menu_role mr on m.`id` = mr.`mid`
+                   left join role r on r.`id` = mr.`rid`
+      </select>
+  </mapper>
+  ```
+
+- 创建 service 接口
+
+  ```java
+  @Service
+  public class UserService implements UserDetailsService {
+      private final UserMapper userMapper;
+  
+      @Autowired
+      public UserService(UserMapper userMapper) {
+          this.userMapper = userMapper;
+      }
+  
+      @Override
+      public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+          // 1.根据用户名获取用户信息
+          User user = userMapper.loadUserByUsername(username);
+          if (user == null) {
+              throw new UsernameNotFoundException("用户不存在");
+          }
+          // 2.根据用户 id 获取角色信息
+          List<Role> roles = userMapper.getUserRoleByUid(user.getId());
+          user.setRoles(roles);
+          return user;
+      }
+  }
+  ```
+
+  ```java
+  @Service
+  public class MenuService {
+      private final MenuMapper menuMapper;
+  
+      @Autowired
+      public MenuService(MenuMapper menuMapper) {
+          this.menuMapper = menuMapper;
+      }
+  
+      public List<Menu> getAllMenu() {
+          return menuMapper.getAllMenu();
+      }
+  }
+  ```
+
+- 创建测试 controller
+
+  ```java
+  /**
+   * /admin/**    ROLE_ADMIN
+   * /user/**     ROLE_USER
+   * /guest/**    ROLE_USER ROLE_GUEST
+   * 
+   * admin        ADMIN  USER
+   * user         USER
+   * blr          GUEST
+   */
+  @RestController
+  public class HelloController {
+      @GetMapping("/admin/hello")
+      public String admin() {
+          return "hello admin";
+      }
+  
+      @GetMapping("/user/hello")
+      public String user() {
+          return "hello user";
+      }
+  
+      @GetMapping("/guest/hello")
+      public String guest() {
+          return "hello guest";
+      }
+  
+      @GetMapping("/hello")
+      public String hello() {
+          return "hello";
+      }
+  }
+  ```
+
+- 创建 CustomSecurityMetadataSource
+
+  ```java
+  @Component
+  public class CustomerSecurityMetaSource implements FilterInvocationSecurityMetadataSource {
+      private final MenuService menuService;
+      AntPathMatcher antPathMatcher = new AntPathMatcher();
+  
+      @Autowired
+      public CustomerSecurityMetaSource(MenuService menuService) {
+          this.menuService = menuService;
+      }
+  
+      /**
+       * 自定义动态资源权限元数据信息
+       *
+       * @param object the object being secured
+       * @return
+       * @throws IllegalArgumentException
+       */
+      @Override
+      public Collection<ConfigAttribute> getAttributes(Object object) throws IllegalArgumentException {
+          // 1.当前的请求对象
+          String requestURI = ((FilterInvocation) object).getRequest().getRequestURI();
+          // 2.查询所有菜单
+          List<Menu> allMenu = menuService.getAllMenu();
+          for (Menu menu : allMenu) {
+              if (antPathMatcher.match(menu.getPattern(), requestURI)) {
+                  String[] roles = menu.getRoles().stream().map(r -> r.getName()).toArray(String[]::new);
+                  return SecurityConfig.createList(roles);
+              }
+          }
+          return null;
+      }
+  
+      @Override
+      public Collection<ConfigAttribute> getAllConfigAttributes() {
+          return null;
+      }
+  
+      @Override
+      public boolean supports(Class<?> clazz) {
+          return FilterInvocation.class.isAssignableFrom(clazz);
+      }
+  }
+  ```
+
+- 配置 Security 配置
+
+  ```java
+  @Configuration
+  @EnableGlobalMethodSecurity(prePostEnabled = true, jsr250Enabled = true, securedEnabled = true)
+  public class SecurityConfig extends WebSecurityConfigurerAdapter {
+      private final CustomerSecurityMetaSource customerSecurityMetaSource;
+      private final UserDetailsService userDetailsService;
+  
+      @Autowired
+      public SecurityConfig(CustomerSecurityMetaSource customerSecurityMetaSource, UserDetailsService userDetailsService) {
+          this.customerSecurityMetaSource = customerSecurityMetaSource;
+          this.userDetailsService = userDetailsService;
+      }
+  
+      @Override
+      protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+          auth.userDetailsService(userDetailsService);
+      }
+  
+      @Override
+      protected void configure(HttpSecurity http) throws Exception {
+          // 1.获取工厂对象
+          ApplicationContext applicationContext = http.getSharedObject(ApplicationContext.class);
+          // 2.设置自定义 url 权限处理
+          http.apply(new UrlAuthorizationConfigurer<>(applicationContext))
+                  .withObjectPostProcessor(new ObjectPostProcessor<FilterSecurityInterceptor>() {
+                      @Override
+                      public <O extends FilterSecurityInterceptor> O postProcess(O object) {
+                          object.setSecurityMetadataSource(customerSecurityMetaSource);
+                          // 是否拒绝公共资源的访问
+                          object.setRejectPublicInvocations(false);
+                          return object;
+                      }
+                  });
+  
+          http.formLogin().and().csrf().disable();
+      }
+  }
+  ```
+
+- 启动入口类进行测试
+
++++
+
+## 十二、OAuth2
+
+-  OAuth2 简介
+-  四种授权模式
+-  Spring Security OAuth2
+-  GitHub 授权登录
+-  授权服务器与资源服务器
+-  使用 JWT
+
+
+
+### 1 OAuth2简介
+
+OAuth 是一个开放的非常重要的认证标准/协议，该标准允许用户让第三方应用访问该用户在某一网站上存储的私密资源（如头像、照片、视频等），并且在这个过程中无须将用户名和密码提供给第三方应用。通过令牌（token）可以实现这一功能，每一个令牌授权一个特定的网站在特定的时段内允许可特定的资源。OAuth 让用户可以授权第三方网站灵活访问它们存储在另外一些资源服务器上的特定信息，而非所有内容。对于用户而言，我们在互联网应用中最常见的 OAuth 应用就是各种第三方登录，例如QQ授权登录、微信授权登录、微博授权登录、GitHub授权登录等。
+
+例如用户想登录Ruby China，传统方式是使用用户名密码但是这样并不安全，因为网站会存储你的用户名密码，这样可能会导致密码泄露。这种授权方式安全隐患很大，如果使用 OAuth 协议就能很好地解决这一问题。
+
+![image-20220711201517843](10-SpringSecurity.assets/image-20220711201517843.png)
+
+> 注意: OAuth2 是OAuth 协议的下一版本，但不兼容 OAuth 1.0。OAuth2 关注客户端开发者的简易性，同时为 Web 应用、桌面应用、移动设备、IoT设备提供专门的认证流程。
+
+
+
+### 2 OAuth2授权总体流程
+
+角色梳理：第三方应用 <----> 存储用户私密信息应用 ----> 授权服务器 ----> 资源服务器
+
+整体流程如下:（图片来自 RFC6749文档 https://tools.ietf.org/html/rfc6749)
+
+![image-20220625085816021](10-SpringSecurity.assets/image-20220625085816021.png)
+
+- （A）用户打开客户端以后，客户端要求用户给予授权。
+- （B）用户同意给予客户端授权。
+- （C）客户端使用上一步获得的授权，向认证服务器申请令牌。
+- （D）认证服务器对客户端进行认证以后，确认无误，同意发放令牌。
+- （E）客户端使用令牌，向资源服务器申请获取资源。
+- （F）资源服务器确认令牌无误，同意向客户端开放资源。
+
+从上图中我们可以看出六个步骤之中，B是关键，即用户怎样才能给于客户端授权。同时会发现 OAuth2 中包含四种不同的角色：
+
+- **Client**：第三方应用。
+- **Resource Owner**：资源所有者。
+- **Authorization Server**：授权服务器。
+- **Resource Server**：资源服务器。
+
+
+
+### 3 四种授权模式
+
+#### 3.1 授权码模式
+
+**授权码模式（`Authorization Code`）**是功能最完整、流程最严密、最安全并且使用最广泛的一种OAuth2授权模式。同时也是最复杂的一种授权模式，它的特点就是通过客户端的后台服务器，与`服务提供商`的认证服务器进行互动。其具体的授权流程如图所示（图片来自 RFC6749文档 https://tools.ietf.org/html/rfc6749)
+
+- Third-party application：第三方应用程序，简称"客户端"（client）；
+- Resource Owner：资源所有者，简称"用户"（user）；
+- User Agent：用户代理，是指浏览器；
+- Authorization Server：认证服务器，即服务端专门用来处理认证的服务器；
+- Resource Server：资源服务器，即服务端存放用户生成的资源的服务器。它与认证服务器，可以是同一台服务器，也可以是不同的服务器。
+
+![image-20220625090018332](10-SpringSecurity.assets/image-20220625090018332.png)
+
+具体流程如下:
+
+- （A）用户访问第三方应用，第三方应用通过浏览器导向认证服务器。
+
+- （B）用户选择是否给予客户端授权。
+
+- （C）假设用户给予授权，认证服务器将用户导向客户端事先指定的"重定向URI"（redirection URI），同时附上一个授权码。
+
+- （D）客户端收到授权码，附上早先的"重定向URI"，向认证服务器申请令牌。这一步是在客户端的后台的服务器上完成的，对用户不可见。
+
+- （E）认证服务器核对了授权码和重定向URI，确认无误后，向客户端发送访问令牌（access token）和更新令牌（refresh token）。
+
+
+核心参数:
+
+```http
+https://wx.com/oauth/authorize?response_type=code&client_id=CLIENT_ID&redirect_uri=http://www.baidu.com&scope=read
+```
+
+| 字段          | 描述                                           |
+| ------------- | ---------------------------------------------- |
+| client_id     | 授权服务器注册应用后的唯一标识                 |
+| response_type | 必须 固定值 在授权码中必须为 code              |
+| redirect_uri  | 必须 通过客户端注册的重定向URL                 |
+| scope         | 必须 令牌可以访问资源权限 read 只读   all 读写 |
+| state         | 可选 存在原样返回客户端 用来防止 CSRF跨站攻击  |
+
+
+
+#### 3.2 简化模式
+
+**简化模式（`implicit` grant type）**不通过第三方应用程序的服务器，直接在浏览器中向认证服务器申请令牌，跳过了"授权码"这个步骤，因此得名。所有步骤在浏览器中完成，令牌对访问者是可见的，且客户端不需要认证。其具体的授权流程如图所示（图片来自 RFC6749文档 https://tools.ietf.org/html/rfc6749)
+
+![image-20220625090540320](10-SpringSecurity.assets/image-20220625090540320.png)
+
+具体步骤如下:
+
+- （A）第三方应用将用户导向认证服务器。
+- （B）用户决定是否给于客户端授权。
+- （C）假设用户给予授权，认证服务器将用户导向客户端指定的"重定向URI"，并在URI的Hash部分包含了访问令牌。#token
+- （D）浏览器向资源服务器发出请求，其中不包括上一步收到的Hash值。
+- （E）资源服务器返回一个网页，其中包含的代码可以获取Hash值中的令牌。
+- （F）浏览器执行上一步获得的脚本，提取出令牌。
+- （G）浏览器将令牌发给客户端。
+
+核心参数:
+
+```http
+https://wx.com/oauth/authorize?response_type=token&client_id=CLIENT_ID&redirect_uri=http://www.baidu.com&scope=read
+```
+
+| 字段          | 描述                                          |
+| ------------- | --------------------------------------------- |
+| client_id     | 授权服务器注册应用后的唯一标识                |
+| response_type | 必须 固定值  在授权码中必须为 token           |
+| redirect_uri  | 必须 通过客户端注册的重定向URL                |
+| scope         | 必须 令牌可以访问资源权限                     |
+| state         | 可选 存在原样返回客户端 用来防止 CSRF跨站攻击 |
+
+
+
+#### 3.3 密码模式
+
+**密码模式（Resource Owner `Password` Credentials Grant）**中，用户向客户端提供自己的用户名和密码。客户端使用这些信息，向"服务商提供商"索要授权。在这种模式中，用户必须把自己的密码给客户端，但是客户端不得储存密码。这通常用在用户对客户端高度信任的情况下，比如客户端是操作系统的一部分，或者由一个相同公司出品。而认证服务器只有在其他授权模式无法执行的情况下，才能考虑使用这种模式。其具体的授权流程如图所示（图片来自 RFC6749文档 https://tools.ietf.org/html/rfc6749)
+
+![image-20220625090710221](10-SpringSecurity.assets/image-20220625090710221.png)
+
+具体步骤如下:
+
+- （A）用户向客户端提供用户名和密码。
+
+- （B）客户端将用户名和密码发给认证服务器，向后者请求令牌。
+
+- （C）认证服务器确认无误后，向客户端提供访问令牌。
+
+核心参数: 
+
+```http
+https://wx.com/token?grant_type=password&username=USERNAME&password=PASSWORD&client_id=CLIENT_ID
+```
+
+
+
+#### 3.4 客户端模式
+
+**客户端模式（`Client Credentials` Grant）**指客户端以自己的名义，而不是以用户的名义，向"服务提供商"进行认证。严格地说，客户端模式并不属于OAuth框架所要解决的问题。在这种模式中，用户直接向客户端注册，客户端以自己的名义要求"服务提供商"提供服务，其实不存在授权问题。
+
+![image-20220625090900509](10-SpringSecurity.assets/image-20220625090900509.png)
+
+具体步骤如下:
+
+- （A）客户端向认证服务器进行身份认证，并要求一个访问令牌。
+
+- （B）认证服务器确认无误后，向客户端提供访问令牌。
+
+```http
+https://wx.com/token?grant_type=client_credentials&client_id=CLIENT_ID&client_secret=CLIENT_SECRET
+```
+
+
+
+### 4 OAuth2标准接口
+
+- `/oauth/authorize`：授权端点
+- `/oauth/token`：获取令牌端点
+- /oauth/confirm_access：用户确认授权提交端点
+- /oauth/error：授权服务错误信息端点
+- /oauth/check_token：用于资源服务访问的令牌解析端点
+- /oauth/token_key：提供公有密匙的端点，如果使用JWT令牌的话
+
+
+
+### 5 GitHub授权登录
 
 
 
