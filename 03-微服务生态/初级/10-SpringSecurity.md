@@ -4932,7 +4932,7 @@ OAuth 是一个开放的非常重要的认证标准/协议，该标准允许用�
 
 ![image-20220711201517843](10-SpringSecurity.assets/image-20220711201517843.png)
 
-> 注意: OAuth2 是OAuth 协议的下一版本，但不兼容 OAuth 1.0。OAuth2 关注客户端开发者的简易性，同时为 Web 应用、桌面应用、移动设备、IoT设备提供专门的认证流程。
+> 注意：OAuth2 是OAuth 协议的下一版本，但不兼容 OAuth 1.0。OAuth2 关注客户端开发者的简易性，同时为 Web 应用、桌面应用、移动设备、IoT设备提供专门的认证流程。
 
 
 
@@ -4940,7 +4940,7 @@ OAuth 是一个开放的非常重要的认证标准/协议，该标准允许用�
 
 角色梳理：第三方应用 <----> 存储用户私密信息应用 ----> 授权服务器 ----> 资源服务器
 
-整体流程如下:（图片来自 RFC6749文档 https://tools.ietf.org/html/rfc6749)
+整体流程如下：(图片来自 RFC6749文档 https://tools.ietf.org/html/rfc6749)
 
 ![image-20220625085816021](10-SpringSecurity.assets/image-20220625085816021.png)
 
@@ -4993,13 +4993,13 @@ OAuth 是一个开放的非常重要的认证标准/协议，该标准允许用�
 https://wx.com/oauth/authorize?response_type=code&client_id=CLIENT_ID&redirect_uri=http://www.baidu.com&scope=read
 ```
 
-| 字段          | 描述                                           |
-| ------------- | ---------------------------------------------- |
-| client_id     | 授权服务器注册应用后的唯一标识                 |
-| response_type | 必须 固定值 在授权码中必须为 code              |
-| redirect_uri  | 必须 通过客户端注册的重定向URL                 |
-| scope         | 必须 令牌可以访问资源权限 read 只读   all 读写 |
-| state         | 可选 存在原样返回客户端 用来防止 CSRF跨站攻击  |
+| 字段          | 描述                                          |
+| ------------- | --------------------------------------------- |
+| client_id     | 授权服务器注册应用后的唯一标识                |
+| response_type | 必须 固定值 在授权码中必须为 code             |
+| redirect_uri  | 必须 通过客户端注册的重定向URL                |
+| scope         | 必须 令牌可以访问资源权限 read 只读 all 读写  |
+| state         | 可选 存在原样返回客户端 用来防止 CSRF跨站攻击 |
 
 
 
@@ -5088,692 +5088,798 @@ https://wx.com/token?grant_type=client_credentials&client_id=CLIENT_ID&client_se
 
 ### 5 GitHub授权登录
 
+#### 5.1 创建OAuth应用
 
+- 访问 github 并登录，在https://github.com/settings/profile中找到 Developer Settings 选项
 
+  ![image-20230113141730588](10-SpringSecurity.assets/image-20230113141730588.png)
 
+- 创建 OAuth App 并输入一下基本信息：
 
+  ![image-20230113142926727](10-SpringSecurity.assets/image-20230113142926727.png)
 
+- 注册成功后会获取到对应的 Client ID 和 Client Secret。
 
+  ![image-20230113143124844](10-SpringSecurity.assets/image-20230113143124844.png)
 
+#### 5.2 项目开发
 
+- 创建 springboot 应用，并引入依赖
 
+  ```xml
+  <dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-oauth2-client</artifactId>
+  </dependency>
+  <dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-security</artifactId>
+  </dependency>
+  <dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-web</artifactId>
+  </dependency>
+  ```
 
+- 创建测试 controller
 
+  ```java
+  @RestController
+  public class HelloController {
+      @GetMapping("/hello")
+      public DefaultOAuth2User hello() {
+          System.out.println("hello ");
+          Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+          return (DefaultOAuth2User) authentication.getPrincipal();
+      }
+  }
+  ```
 
+- 配置 security
 
+  ```java
+  /**
+   * 用来对 Spring Security 进行自定义配置
+   */
+  @Configuration
+  public class SecurityConfig extends WebSecurityConfigurerAdapter {
+      @Override
+      protected void configure(HttpSecurity http) throws Exception {
+          http.authorizeRequests()
+                  .anyRequest().authenticated()
+                  .and()
+                  .oauth2Login(); // 使用 oauth2 认证  配置文件中配置认证服务
+      }
+  }
+  ```
 
+- 配置配置文件
 
+  ```properties
+  server.port=8080
+  spring.security.oauth2.client.registration.github.client-id=ff9a5bb087b537e87995
+  spring.security.oauth2.client.registration.github.client-secret=5e5e2bdaf345f6340b6e0b722528924522e0f0ae
+  # 一定要与重定向回调 URL 一致
+  spring.security.oauth2.client.registration.github.redirect-uri=http://localhost:8080/login/oauth2/code/github
+  ```
 
+- 启动测试
 
+  ![image-20230113144434010](10-SpringSecurity.assets/image-20230113144434010.png)
 
+- 点击 github 登录，点击授权，访问 hello 接口
 
+  ![image-20230113144455984](10-SpringSecurity.assets/image-20230113144455984.png)
 
+  ![image-20230113155730489](10-SpringSecurity.assets/image-20230113155730489.png)
 
 
 
+### 6 Spring Security OAuth2
 
+Spring Security 对 OAuth2 提供了很好的支持，这使得我们在 Spring Security 中使用 OAuth2 非常地方便。然而由于历史原因，Spring Seaurity对 OAuth2 的支持比较混乱，这里简单梳理一下。
 
+大约十年前，Spring 引入了一个社区驱动的开源项目 Spring Security OAuth，并将其纳入 Spring 项目组合中。到今天为止，这个项目己经发展成为一个成熟的项目，可以支持大部分 OAuth 规范，包括资源服务器、客户端和授权服务器等。
 
+然而早期的项目存在一些问题，例如：
 
+- OAuth 是在早期完成的，开发者无法预料未来的变化以及这些代码到底要被怎么使用，这导致很多 Spring 项目提供了自己的 OAuth 支持，也就带来了 OAuth 支持的碎片化。
 
+- 最早的OAuth项目同时支特 OAuth1.0 和 OAuth2.0，而现在OAuth1.0 早已经不再使用，可以放弃了。
 
+- 现在我们有更多的库可以选择，可以在这些库的基础上去开发，以便更好地支持JWT等新技术。
 
+基于以上这些原因，官方决定重写 Spring Security OAuth，以便更好地协调 Spring 和OAuth，并简化代码库，使Spring 的 OAuth 支持更加灵活。然而，在重写的过程中，发生了不少波折。
 
+2018年1月30日，Spring 官方发了一个通知，表示要逐渐停止现有的 OAuth2支持，然后在 Spring Security 5中构建下一代 OAuth2.0 支持。这么做的原因是因为当时 OAuth2 的落地方案比较混乱，在 Spring Security OAuth、Spring Cloud Security、Spring Boot 1.5.x 以及当时最新的Spring Security 5.x 中都提供了对 OAuth2 的实现。以至于当开发者需要使用 OAuth2 时，不得不问，到底选哪一个依赖合适呢？
 
+所以Spring 官方决定有必要将 OAuth2.0 的支持统一到一个项目中，以便为用户提供明确的选择，并避免任何潜在的混乱，同时 OAuth2.0 的开发文档也要重新编写，以方便开发人员学习。所有的决定将在 Spring Security 5 中开始，构建下一代 OAuth2.0的支持。从那个时候起，Spring Security OAuth 项目就正式处于维护模式。官方将提供至少一年的错识/安全修复程序，并且会考虑添加次要功能，但不会添加主要功能。同时将 Spring Security OAuth中的所有功能重构到 Spring Security 5.x 中。
 
+到了2019年11月14日，Spring 官方又发布一个通知，这次的通知首先表示 Spring Security OAuth 在迁往 Spring Security 5.x 的过程非常顺利，大都分迁程工作已经完成了，剩下的将在5.3 版本中完成迁移，在迁移的过程中还添加了许多新功能。包括对 OpenID Connect1.0 的支持。同时还宣布将不再支持授权服务器，不支持的原因有两个：
 
+1. `在2019年，已经有大量的商业和开源授权服务器可用。`
+2. `授权服务器是使用一个库来构建产品，而 Spring Security 作为框架，并不适合做这件事情。`
 
+一石激起千层浪，许多开发者表示对此难以接受。这件事也在Spring 社区引发了激烈的讨论，好在 Spring 官方愿意倾听来自社区的声音。
 
+到了2020年4月15日，Spring 官方宣布启动 Spring Authorization server 项目。这是一个由 Spring Security 团队领导的社区驱动的项目，致力于向 Spring 社区提供 Authorization Server支持，也就是说，Spring 又重新支持授权服务器了。
 
+2020年8月21日，Spring Authorization Server 0.0.1 正式发布！
 
+这就是 OAuth2 在Spring 家族中的发展历程了。在后面的学习中，客户端和资源服务器都将采用最新的方式来构建，授权服务器依然采用旧的方式来构建，因为目前的 Spring Authorization Server 0.0.1 功能较少且 BUG 较多。
 
+一般来说，当我们在项目中使用 OAuth2 时，都是开发客户端，授权服务器和资源服务器都是由外部提供。例如我们想在自己搭建网站上集成 GitHub 第三方登录，只需要开发自己的客户端即可，认证服务器和授权服务器都是由 GitHub 提供的。
 
 
 
+### 7 授权、资源服务器
 
+前面的 GitHub 授权登录主要向大家展示了 OAuth2 中客户端的工作模式。对于大部分的开发者而言，日常接触到的 OAuth2 都是开发客户端，例如接入 QQ 登录、接入微信登录等。不过也有少量场景，可能需要开发者提供授权服务器与资源服务器，接下来我们就通过一个完整的案例演示如何搭建授权服务器与资源服务器。
 
+搭建授权服务器，我们可以选择一些现成的开源项目，直接运行即可，例如：
 
+- Keycloak：RedFat 公司提供的开源工具，提供了很多实用功能，倒如单点登录、支持OpenID、可视化后台管理等。
+- Apache Oltu: Apache 上的开源项目，最近几年没怎么维护了。
 
+接下来我们将搭建一个包含授权服务器、资源服务器以及客户端在内的 OAuth2 案例。
 
+项目规划首先把项目分为三部分：
 
+- 授权服务器：采用较早的 spring-cloud-starter-oauth2 来搭建授权服务器。
+- 资源服务器：采用最新的 Spring Security 5.x 搭建资源服务器，
+- 客户端: 采用最新的 Spring Security5.x 搭建客户端。
 
 
 
+#### 7.1 授权服务器搭建
 
+##### 7.1.1 基于内存客户端和令牌存储
 
+> 创建 springboot 应用，并引入依赖
+>
+> 注意：降低 springboot 版本为 2.2.5.RELEASE
 
+```xml
+<dependency>
+  <groupId>org.springframework.cloud</groupId>
+  <artifactId>spring-cloud-starter-oauth2</artifactId>
+  <version>2.2.5.RELEASE</version>
+</dependency>
+<dependency>
+  <groupId>org.springframework.boot</groupId>
+  <artifactId>spring-boot-starter-security</artifactId>
+</dependency>
+```
 
 
 
+编写配置类，添加 security 配置类以及 oauth 配置类
+
+> Spring Security 配置类：
 
+```java
+/**
+ * @description: 自定义 security 配置类
+ * @author: xu
+ * @date: 2023/1/13 16:18
+ */
+@Configuration
+public class SecurityConfig extends WebSecurityConfigurerAdapter {
 
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
 
+    @Bean
+    public UserDetailsService userDetailsService() {
+        InMemoryUserDetailsManager inMemoryUserDetailsManager = new InMemoryUserDetailsManager();
+        inMemoryUserDetailsManager.createUser(User.withUsername("root")
+                .password(passwordEncoder().encode("123"))
+                .roles("admin").build());
+        return inMemoryUserDetailsManager;
+    }
 
+    @Override
+    protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+        auth.userDetailsService(userDetailsService());
+    }
 
+    // 将内部的 AuthenticationManager 暴露
+    @Override
+    @Bean
+    public AuthenticationManager authenticationManagerBean() throws Exception {
+        return super.authenticationManagerBean();
+    }
 
+    @Override
+    protected void configure(HttpSecurity http) throws Exception {
+        http.authorizeRequests()
+                .anyRequest().authenticated()
+                .and().formLogin()
+                .and().csrf().disable();
+    }
+}
+```
 
+> Authorization Server 配置类：
 
+```java
+// 自定义 授权服务器配置
+@Configuration
+@EnableAuthorizationServer // 指定当前应用为授权服务器
+public class AuthorizationServer extends AuthorizationServerConfigurerAdapter {
 
+    private final PasswordEncoder passwordEncoder;
+    private final UserDetailsService userDetailsService;
+    private final AuthenticationManager authenticationManager;
 
+    @Autowired
+    public AuthorizationServer(PasswordEncoder passwordEncoder, UserDetailsService userDetailsService, AuthenticationManager authenticationManager) {
+        this.passwordEncoder = passwordEncoder;
+        this.userDetailsService = userDetailsService;
+        this.authenticationManager = authenticationManager;
+    }
 
+    /**
+     * 用来配置授权服务器可以为哪些客户端授权
+     * id secret redirectURI 使用哪种授权模式
+     *
+     * @param clients
+     * @throws Exception
+     */
+    @Override
+    public void configure(ClientDetailsServiceConfigurer clients) throws Exception {
+        clients.inMemory()
+                .withClient("client")
+                .secret(passwordEncoder.encode("secret")) // 注册客户端秘钥
+                .redirectUris("http://www.baidu.com")
+                .authorizedGrantTypes("authorization_code", "refresh_token") // 授权服务器支持的模式 支持授权码模式
+                .scopes("read:user"); // 令牌允许获取的资源权限
+    }
+    
+    @Override
+    public void configure(AuthorizationServerEndpointsConfigurer endpoints) throws Exception {
+        endpoints.userDetailsService(userDetailsService); // 注入 userDetailsService
+        endpoints.authenticationManager(authenticationManager); // 注入 authenticationManager
+    }
+
+    /*
+     * 授权码模式：
+     *  1.请求用户是否授权 /oauth/authorize
+     *    完整路径：http://localhost:8080/oauth/authorize?client_id=client&response_type=code&redirect_uri=http://www.baidu.com
+     *  2.授权之后根据获取的授权码获取令牌 /oauth/token id secret redirectURI 授权类型：authorization_code
+     *    完整路径：curl -X POST -H "Content-Type: application/x-www-form-urlencoded" -d 'grant_type=authorization_code&code=IwvCtx&redirect_uri=http://www.baidu.com' "http://client:secret@localhost:8080/oauth/token"
+     *  3.支持令牌刷新 /oauth/token id secret 授权类型：refresh_token 刷新的令牌：refresh_token
+     *    完整路径：curl -X POST -H "Content-Type: application/x-www-form-urlencoded" -d 'grant_type=refresh_token&refresh_token=f6583d8a-598c-46bb-81d8-01fa6484cf05&client_id=client' "http://client:secret@localhost:8080/oauth/token"
+     * */
+}
+```
+
+启动服务,登录之后进行授权码获取
+
+![image-20230113170029924](10-SpringSecurity.assets/image-20230113170029924.png)
+
+![image-20230113170043590](10-SpringSecurity.assets/image-20230113170043590.png)
+
+点击授权获取授权码
+
+![image-20230113170125936](10-SpringSecurity.assets/image-20230113170125936.png)
+
+根据授权码，申请令牌
+
+```bash
+curl -X POST -H "Content-Type: application/x-www-form-urlencoded" -d 'grant_type=refresh_token&refresh_token=f6583d8a-598c-46bb-81d8-01fa6484cf05&client_id=client' "http://client:secret@localhost:8080/oauth/token"
+```
+
+![image-20230113173040547](10-SpringSecurity.assets/image-20230113173040547.png)
+
+刷新令牌
+
+```bash
+curl -X POST -H "Content-Type: application/x-www-form-urlencoded" -d 'grant_type=refresh_token&refresh_token=f6583d8a-598c-46bb-81d8-01fa6484cf05&client_id=client' "http://client:secret@localhost:8080/oauth/token"
+```
+
+![image-20230113173048715](10-SpringSecurity.assets/image-20230113173048715.png)
+
+
+
+##### 7.1.2 基于数据库客户端和令牌存储
+
+在上面的案例中，TokenStore 的默认实现为 InMemoryTokenStore 即内存存储，对于 Client 信息，ClientDetailsService 接口负责从存储仓库中读取数据，在上面的案例中默认使用的也是 InMemoryClientDetailsService 实现类。
+
+如果要想使用数据库存储，只要提供这些接口的实现类即可，而框架已经为我们写好 JdbcTokenStore 和 JdbcClientDetailsService
+
+建表：https://github.com/spring-projects/spring-security-oauth/blob/master/spring-security-oauth2/src/test/resources/schema.sql
+
+> 注意: 并用 BLOB 替换语句中的 LONGVARBINARY 类型
+
+```sql
+SET NAMES utf8mb4;
+SET FOREIGN_KEY_CHECKS = 0;
+
+-- ----------------------------
+-- Table structure for clientdetails
+-- ----------------------------
+DROP TABLE IF EXISTS `clientdetails`;
+CREATE TABLE `clientdetails` (
+  `appId` varchar(256) NOT NULL,
+  `resourceIds` varchar(256) DEFAULT NULL,
+  `appSecret` varchar(256) DEFAULT NULL,
+  `scope` varchar(256) DEFAULT NULL,
+  `grantTypes` varchar(256) DEFAULT NULL,
+  `redirectUrl` varchar(256) DEFAULT NULL,
+  `authorities` varchar(256) DEFAULT NULL,
+  `access_token_validity` int(11) DEFAULT NULL,
+  `refresh_token_validity` int(11) DEFAULT NULL,
+  `additionalInformation` varchar(4096) DEFAULT NULL,
+  `autoApproveScopes` varchar(256) DEFAULT NULL,
+  PRIMARY KEY (`appId`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ----------------------------
+-- Table structure for oauth_access_token
+-- ----------------------------
+DROP TABLE IF EXISTS `oauth_access_token`;
+CREATE TABLE `oauth_access_token` (
+  `token_id` varchar(256) DEFAULT NULL,
+  `token` blob,
+  `authentication_id` varchar(256) NOT NULL,
+  `user_name` varchar(256) DEFAULT NULL,
+  `client_id` varchar(256) DEFAULT NULL,
+  `authentication` blob,
+  `refresh_token` varchar(256) DEFAULT NULL,
+  PRIMARY KEY (`authentication_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ----------------------------
+-- Table structure for oauth_approvals
+-- ----------------------------
+DROP TABLE IF EXISTS `oauth_approvals`;
+CREATE TABLE `oauth_approvals` (
+  `userId` varchar(256) DEFAULT NULL,
+  `clientId` varchar(256) DEFAULT NULL,
+  `scope` varchar(256) DEFAULT NULL,
+  `status` varchar(10) DEFAULT NULL,
+  `expiresAt` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `lastModifiedAt` date DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ----------------------------
+-- Table structure for oauth_client_details
+-- ----------------------------
+DROP TABLE IF EXISTS `oauth_client_details`;
+CREATE TABLE `oauth_client_details` (
+  `client_id` varchar(256) NOT NULL,
+  `resource_ids` varchar(256) DEFAULT NULL,
+  `client_secret` varchar(256) DEFAULT NULL,
+  `scope` varchar(256) DEFAULT NULL,
+  `authorized_grant_types` varchar(256) DEFAULT NULL,
+  `web_server_redirect_uri` varchar(256) DEFAULT NULL,
+  `authorities` varchar(256) DEFAULT NULL,
+  `access_token_validity` int(11) DEFAULT NULL,
+  `refresh_token_validity` int(11) DEFAULT NULL,
+  `additional_information` varchar(4096) DEFAULT NULL,
+  `autoapprove` varchar(256) DEFAULT NULL,
+  PRIMARY KEY (`client_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ----------------------------
+-- Table structure for oauth_client_token
+-- ----------------------------
+DROP TABLE IF EXISTS `oauth_client_token`;
+CREATE TABLE `oauth_client_token` (
+  `token_id` varchar(256) DEFAULT NULL,
+  `token` blob,
+  `authentication_id` varchar(256) NOT NULL,
+  `user_name` varchar(256) DEFAULT NULL,
+  `client_id` varchar(256) DEFAULT NULL,
+  PRIMARY KEY (`authentication_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ----------------------------
+-- Table structure for oauth_code
+-- ----------------------------
+DROP TABLE IF EXISTS `oauth_code`;
+CREATE TABLE `oauth_code` (
+  `code` varchar(256) DEFAULT NULL,
+  `authentication` blob
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ----------------------------
+-- Table structure for oauth_refresh_token
+-- ----------------------------
+DROP TABLE IF EXISTS `oauth_refresh_token`;
+CREATE TABLE `oauth_refresh_token` (
+  `token_id` varchar(256) DEFAULT NULL,
+  `token` blob,
+  `authentication` blob
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+SET FOREIGN_KEY_CHECKS = 1;
+
+-- 写入客户端信息
+INSERT INTO `oauth_client_details` VALUES ('client', NULL, '$2a$10$QCsINtuRfP8kM112xRVdvuI58MrefLlEP2mM0kzB5KZCPhnOf4392', 'read', 'authorization_code,refresh_token', 'http://www.baidu.com', NULL, NULL, NULL, NULL, NULL);
+```
+
+引入依赖
+
+```xml
+<dependency>
+    <groupId>mysql</groupId>
+    <artifactId>mysql-connector-java</artifactId>
+    <scope>runtime</scope>
+</dependency>
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-jdbc</artifactId>
+</dependency>
+```
+
+编写配置文件
+
+```properties
+spring.datasource.driver-class-name=com.mysql.jdbc.Driver
+spring.datasource.url=jdbc:mysql://192.168.88.100:3306/oauth?characterEncoding=UTF-8
+spring.datasource.username=root
+spring.datasource.password=123456
+```
+
+Spring Security 配置类
+
+```java
+@Configuration
+public class SecurityConfig extends WebSecurityConfigurerAdapter {
+
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
+
+    @Bean
+    public UserDetailsService userDetailsService() {
+        InMemoryUserDetailsManager inMemoryUserDetailsManager = new InMemoryUserDetailsManager();
+        inMemoryUserDetailsManager.createUser(User.withUsername("root")
+                .password(passwordEncoder().encode("123"))
+                .roles("admin").build());
+        return inMemoryUserDetailsManager;
+    }
+
+    @Override
+    protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+        auth.userDetailsService(userDetailsService());
+    }
+
+    // 将内部的 AuthenticationManager 暴露
+    @Override
+    @Bean
+    public AuthenticationManager authenticationManagerBean() throws Exception {
+        return super.authenticationManagerBean();
+    }
+
+    @Override
+    protected void configure(HttpSecurity http) throws Exception {
+        http.authorizeRequests()
+                .anyRequest().authenticated()
+                .and().formLogin()
+                .and().csrf().disable();
+    }
+}
+```
+
+编写数据库信息实现
+
+```java
+/**
+ * @description:
+ * @author: xu
+ * @date: 2023/1/13 17:44
+ */
+@Configuration
+@EnableAuthorizationServer
+public class JdbcAuthorizationServer extends AuthorizationServerConfigurerAdapter {
+
+    private final DataSource dataSource;
+    private final PasswordEncoder passwordEncoder;
+    private final AuthenticationManager authenticationManager;
+
+    @Autowired
+    public JdbcAuthorizationServer(DataSource dataSource, PasswordEncoder passwordEncoder, AuthenticationManager authenticationManager) {
+        this.dataSource = dataSource;
+        this.passwordEncoder = passwordEncoder;
+        this.authenticationManager = authenticationManager;
+    }
+
+    @Bean
+    public ClientDetailsService clientDetails() {
+        JdbcClientDetailsService jdbcClientDetailsService = new JdbcClientDetailsService(dataSource);
+        jdbcClientDetailsService.setPasswordEncoder(passwordEncoder);
+        return jdbcClientDetailsService;
+    }
+
+    @Override
+    public void configure(ClientDetailsServiceConfigurer clients) throws Exception {
+        clients.withClientDetails(clientDetails());
+    }
+
+    // 配置令牌存储
+    @Bean
+    public TokenStore tokenStore() {
+        return new JdbcTokenStore(dataSource);
+    }
+
+    @Override
+    public void configure(AuthorizationServerEndpointsConfigurer endpoints) throws Exception {
+        endpoints.authenticationManager(authenticationManager);//认证管理器
+        endpoints.tokenStore(tokenStore());//配置令牌存储为数据库存储
+
+        // 配置TokenServices参数
+        DefaultTokenServices tokenServices = new DefaultTokenServices();//修改默认令牌生成服务
+        tokenServices.setTokenStore(endpoints.getTokenStore());//基于数据库令牌生成
+        tokenServices.setSupportRefreshToken(true);//是否支持刷新令牌
+        tokenServices.setReuseRefreshToken(true);//是否重复使用刷新令牌（直到过期）
+
+        tokenServices.setClientDetailsService(endpoints.getClientDetailsService());//设置客户端信息
+        tokenServices.setTokenEnhancer(endpoints.getTokenEnhancer());//用来控制令牌存储增强策略
+        //访问令牌的默认有效期（以秒为单位）。过期的令牌为零或负数。
+        tokenServices.setAccessTokenValiditySeconds((int) TimeUnit.DAYS.toSeconds(30)); // 30天
+        //刷新令牌的有效性（以秒为单位）。如果小于或等于零，则令牌将不会过期
+        tokenServices.setRefreshTokenValiditySeconds((int) TimeUnit.DAYS.toSeconds(3)); //3天
+        endpoints.tokenServices(tokenServices);//使用配置令牌服务
+    }
+}
+```
+
+启动测试，发现数据库中已经存储相关的令牌
+
+![image-20230113183358723](10-SpringSecurity.assets/image-20230113183358723.png)
+
+
+
+#### 7.2 资源服务器搭建
+
+- 引入依赖
+
+  ```xml
+  <properties>
+      <java.version>1.8</java.version>
+      <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+      <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+      <spring-boot.version>2.2.5.RELEASE</spring-boot.version>
+      <spring-cloud.version>Hoxton.SR9</spring-cloud.version>
+  </properties>
+  
+  <dependencies>
+      <dependency>
+          <groupId>org.springframework.boot</groupId>
+          <artifactId>spring-boot-starter-security</artifactId>
+      </dependency>
+      <dependency>
+          <groupId>org.springframework.boot</groupId>
+          <artifactId>spring-boot-starter-web</artifactId>
+      </dependency>
+  
+      <dependency>
+          <groupId>org.springframework.cloud</groupId>
+          <artifactId>spring-cloud-starter-oauth2</artifactId>
+      </dependency>
+  
+      <dependency>
+          <groupId>org.springframework.security</groupId>
+          <artifactId>spring-security-oauth2-resource-server</artifactId>
+      </dependency>
+  
+  
+      <dependency>
+          <groupId>mysql</groupId>
+          <artifactId>mysql-connector-java</artifactId>
+          <scope>runtime</scope>
+      </dependency>
+      <dependency>
+          <groupId>org.springframework.boot</groupId>
+          <artifactId>spring-boot-starter-jdbc</artifactId>
+      </dependency>
+  
+      <dependency>
+          <groupId>org.springframework.boot</groupId>
+          <artifactId>spring-boot-starter-test</artifactId>
+          <scope>test</scope>
+          <exclusions>
+              <exclusion>
+                  <groupId>org.junit.vintage</groupId>
+                  <artifactId>junit-vintage-engine</artifactId>
+              </exclusion>
+          </exclusions>
+      </dependency>
+      <dependency>
+          <groupId>org.springframework.security</groupId>
+          <artifactId>spring-security-test</artifactId>
+          <scope>test</scope>
+      </dependency>
+  </dependencies>
+  
+  <dependencyManagement>
+      <dependencies>
+          <dependency>
+              <groupId>org.springframework.cloud</groupId>
+              <artifactId>spring-cloud-dependencies</artifactId>
+              <version>${spring-cloud.version}</version>
+              <type>pom</type>
+              <scope>import</scope>
+          </dependency>
+          <dependency>
+              <groupId>org.springframework.boot</groupId>
+              <artifactId>spring-boot-dependencies</artifactId>
+              <version>${spring-boot.version}</version>
+              <type>pom</type>
+              <scope>import</scope>
+          </dependency>
+      </dependencies>
+  </dependencyManagement>
+  ```
+
+- 创建资源
+
+  ```java
+  @RestController
+  public class HelloController {
+      @GetMapping("/hello")
+      public String hello() {
+          String hello = "hello resource server";
+          System.out.println(hello);
+          return hello;
+      }
+  }
+  ```
+
+- 编写资源服务器配置类
+
+  ```java
+  // 开启 oauth 资源服务器
+  @Configuration
+  @EnableResourceServer
+  public class ResourceServerConfig extends ResourceServerConfigurerAdapter {
+      private final DataSource dataSource;
+  
+      @Autowired
+      public ResourceServerConfig(DataSource dataSource) {
+          this.dataSource = dataSource;
+      }
+  
+      @Override
+      public void configure(ResourceServerSecurityConfigurer resources) throws Exception {
+          resources.tokenStore(tokenStore());
+      }
+   
+      @Bean
+      public TokenStore tokenStore() {
+          return new JdbcTokenStore(dataSource);
+      }
+  }
+  ```
+
+- 编写配置文件
+
+  ```properties
+  server.port=8081
+  spring.datasource.driver-class-name=com.mysql.jdbc.Driver
+  spring.datasource.url=jdbc:mysql://192.168.88.100:3306/oauth?characterEncoding=UTF-8
+  spring.datasource.username=root
+  spring.datasource.password=123456
+  ```
+
+- 测试：先启动授权服务器8080，再启动资源服务器8081
+
+  生成令牌之后带有令牌访问：
+
+  ![image-20230113190129826](10-SpringSecurity.assets/image-20230113190129826.png)
+
+  ![image-20230113190158682](10-SpringSecurity.assets/image-20230113190158682.png)
+
+  ![image-20230113190246421](10-SpringSecurity.assets/image-20230113190246421.png)
+
+  ```bash
+  curl -H "Authorization:Bearer abe67ce4-4ec4-4a57-9eab-71bdf3747aa3" http://localhost:8081/hello
+  ```
+
+
+
+### 8 使用JWT
+
+#### 8.1 授权服务器颁发JWT令牌
+
+- 配置颁发JWT令牌
+
+  ```java
+  @Configuration
+  @EnableAuthorizationServer
+  public class JwtAuthServerConfig extends AuthorizationServerConfigurerAdapter {
+  
+      private final PasswordEncoder passwordEncoder;
+      private final AuthenticationManager authenticationManager;
+      private final DataSource dataSource;
+  
+      @Autowired
+      public JwtAuthServerConfig(PasswordEncoder passwordEncoder, AuthenticationManager authenticationManager, DataSource dataSource) {
+          this.passwordEncoder = passwordEncoder;
+          this.authenticationManager = authenticationManager;
+          this.dataSource = dataSource;
+      }
+  
+      @Override //配置使用 jwt 方式颁发令牌,同时配置 jwt 转换器
+      public void configure(AuthorizationServerEndpointsConfigurer endpoints) throws Exception {
+          endpoints.tokenStore(tokenStore())
+                  .accessTokenConverter(jwtAccessTokenConverter())
+                  .authenticationManager(authenticationManager);
+      }
+  
+      @Bean//使用JWT方式生成令牌
+      public TokenStore tokenStore() {
+          return new JwtTokenStore(jwtAccessTokenConverter());
+      }
+  
+      @Bean//使用同一个密钥来编码 JWT 中的  OAuth2 令牌
+      public JwtAccessTokenConverter jwtAccessTokenConverter() {
+          JwtAccessTokenConverter converter = new JwtAccessTokenConverter();
+          converter.setSigningKey("123");//可以采用属性注入方式 生产中建议加密
+          return converter;
+      }
+  
+      @Bean // 声明 ClientDetails实现
+      public ClientDetailsService clientDetails() {
+          JdbcClientDetailsService jdbcClientDetailsService = new JdbcClientDetailsService(dataSource);
+          jdbcClientDetailsService.setPasswordEncoder(passwordEncoder);
+          return jdbcClientDetailsService;
+      }
+  
+      @Override//使用数据库方式客户端存储
+      public void configure(ClientDetailsServiceConfigurer clients) throws Exception {
+          clients.withClientDetails(clientDetails());
+      }
+  }
+  ```
+
+- 启动服务，根据授权码获取令牌
+
+  ![image-20230113192354296](10-SpringSecurity.assets/image-20230113192354296.png)
+
+  ![image-20230113192445327](10-SpringSecurity.assets/image-20230113192445327.png)
+
+
+
+#### 8.2 使用JWT令牌：资源服务器
+
+- 配置资源服务器解析jwt
+
+  ```java
+  // 开启 oauth 资源服务器
+  @Configuration
+  @EnableResourceServer
+  public class JwtResourceServerConfig extends ResourceServerConfigurerAdapter {
+      @Override
+      public void configure(ResourceServerSecurityConfigurer resources) throws Exception {
+          resources.tokenStore(tokenStore());
+      }
+  
+      @Bean
+      public TokenStore tokenStore() {
+          return new JwtTokenStore(jwtAccessTokenConverter());
+      }
+  
+      @Bean
+      public JwtAccessTokenConverter jwtAccessTokenConverter() {
+          JwtAccessTokenConverter jwtAccessTokenConverter = new JwtAccessTokenConverter();
+          jwtAccessTokenConverter.setSigningKey("123");
+          return jwtAccessTokenConverter;
+      }
+  }
+  ```
+
+- 启动测试，通过 jwt 令牌访问资源
+
+  ```bash
+  curl -H "Authorization:Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE2NzM2NTIyNjEsInVzZXJfbmFtZSI6InJvb3QiLCJhdXRob3JpdGllcyI6WyJST0xFX2FkbWluIl0sImp0aSI6IjViYjMzMDEyLTJiYTEtNDc2NS1iNzIyLWQ3YzU1NmM4Y2RhMiIsImNsaWVudF9pZCI6ImNsaWVudCIsInNjb3BlIjpbInJlYWQiXX0.oJT69XnyrKzTeFyv1czZ7-QVLnpGN6AO2pfOlwsM5MQ" http://localhost:8081/hello
+  ```
+
+  ![image-20230113192810087](10-SpringSecurity.assets/image-20230113192810087.png)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-`
