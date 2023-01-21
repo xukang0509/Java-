@@ -180,8 +180,8 @@ AccessDecisionVoter 和 AccessDecisionManager 都有众多的实现类，在 Acc
 
 3. 启动项目进行测试
 
-   ```markdown
-   - http://localhost:8080/hello
+   ```
+   http://localhost:8080/hello
    ```
 
    ![image-20221231203248190](10-SpringSecurity.assets/image-20221231203248190.png)
@@ -241,8 +241,7 @@ https://docs.spring.io/spring-security/site/docs/5.5.4/reference/html5/#servlet-
 
 <img src="10-SpringSecurity.assets/image-20220110115946010.png" alt="image-20220110115946010" style="zoom:33%;" />
 
-需要注意的是，默认过滤器并不是直接放在 Web 项目的原生过滤器链中，而是通过一个
-FlterChainProxy 来统一管理。Spring Security 中的过滤器链通过 FilterChainProxy 嵌入到 Web项目的原生过滤器链中。FilterChainProxy作为一个顶层的管理者，将统一管理 Security Filter。FilterChainProxy 本身是通过Spring框架提供的 DelegatingFilterProxy 整合到原生的过滤器链中。
+需要注意的是，默认过滤器并不是直接放在 Web 项目的原生过滤器链中，而是通过一个 FlterChainProxy 来统一管理。Spring Security 中的过滤器链通过 FilterChainProxy 嵌入到 Web项目的原生过滤器链中。FilterChainProxy作为一个顶层的管理者，将统一管理 Security Filter。FilterChainProxy 本身是通过Spring框架提供的 DelegatingFilterProxy 整合到原生的过滤器链中。
 
 
 
@@ -395,8 +394,6 @@ class DefaultWebSecurityCondition extends AllNestedConditions {
 
 
 **看到这里就知道默认实现是基于 InMemoryUserDetailsManager 这个类,也就是内存的实现!**
-
-
 
 
 
