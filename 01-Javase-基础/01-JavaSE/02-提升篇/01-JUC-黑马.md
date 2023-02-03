@@ -1929,103 +1929,1268 @@ class S3 {
 
 ## 三、共享模型之管程
 
+本章内容
+
+- 共享问题
+- synchronized
+- 线程安全分析
+- Monitor
+- wait/notify
+- 线程状态转换
+- 活跃性
+- Lock
+
+
+
 ### 1 共享带来的问题
 
+#### 1.1 小故事
 
+- 老王（操作系统）有一个功能强大的算盘（CPU），现在想把它租出去，赚一点外快
 
+  ![image-20230202182355854](01-JUC-%E9%BB%91%E9%A9%AC.assets/image-20230202182355854.png)
 
+- 小南、小女（线程）来使用这个算盘来进行一些计算，并按照时间给老王支付费用
 
+- 但小南不能一天24小时使用算盘，他经常要小憩一会（sleep），又或是去吃饭上厕所（阻塞 io 操作），有时还需要一根烟，没烟时思路全无（wait），这些情况统称为[阻塞]
 
+  ![image-20230202182458060](01-JUC-%E9%BB%91%E9%A9%AC.assets/image-20230202182458060.png)
 
+- 在这些时候，算盘没利用起来（不能收钱了），老王觉得有点不划算
 
+- 另外，小女也想用用算盘，如果总是小南占着算盘，让小女觉得不公平
 
+- 于是，老王灵机一动，想了个办法 [让他们每人用一会，轮流使用算盘]
 
+- 这样，当小南阻塞的时候，算盘可以分给小女使用，不会浪费，反之亦然
 
+- 最近执行的计算比较复杂，需要存储一些中间结果，而学生们的脑容量（工作内存）不够，所以老王申请了一个笔记本（主存），把一些中间结果先记在本上
 
+- 计算流程是这样的
 
+  ![image-20230202182617509](01-JUC-%E9%BB%91%E9%A9%AC.assets/image-20230202182617509.png)
 
+- 但是由于分时系统，有一天还是发生了事故
 
+- 小南刚读取了初始值 0 做了个 +1 运算，还没来得及写回结果
 
+- 老王说 [小南，你的时间到了，该别人了，记住结果走吧]，于是小南念叨着[ 结果是1，结果是1...]，不甘心地到一边待着去了（上下文切换）
 
+- 老王说 [ 小女，该你了 ]，小女看到了笔记本上还写着 0 做了一个 -1 运算，将结果 -1 写入笔记本
 
+- 这时小女的时间也用完了，老王又叫醒了小南：[小南，把你上次的题目算完吧]，小南将他脑海中的结果 1 写入了笔记本
 
+  ![image-20230202182741781](01-JUC-%E9%BB%91%E9%A9%AC.assets/image-20230202182741781.png)
 
+- 小南和小女都觉得自己没做错，但笔记本里的结果是 1 而不是 0
 
 
 
+#### 1.2 Java的体现
 
+两个线程对初始值为 0 的静态变量一个做自增，一个做自减，各做 5000 次，结果是 0 吗？
 
+```java
+static int counter = 0;
+public static void main(String[] args) throws InterruptedException {
+    Thread t1 = new Thread(() -> {
+        for (int i = 0; i < 5000; i++) {
+            counter++;
+        }
+    }, "t1");
+    
+    Thread t2 = new Thread(() -> {
+        for (int i = 0; i < 5000; i++) {
+            counter--;
+        }
+    }, "t2");
+    
+    t1.start();
+    t2.start();
+    t1.join();
+    t2.join();
+    log.debug("{}",counter);
+}
+```
 
 
 
+#### 1.3 问题分析
 
+以上的结果可能是正数、负数、零。为什么呢？因为 Java 中对静态变量的自增，自减并不是原子操作，要彻底理解，必须从字节码来进行分析
 
+例如对于`i++`而言（i为静态变量），实际会产生如下的 JVM 字节码指令：
 
+```java
+getstatic i		// 获取静态变量i的值
+iconst_1		// 准备常量1
+iadd			// 自增
+putstatic i		 // 将修改后的值存入静态变量i
+```
 
+而对应`i--`也是类似：
 
+```java
+getstatic i		// 获取静态变量i的值
+iconst_1		// 准备常量1
+isub			// 自减
+putstatic i		 // 将修改后的值存入静态变量i
+```
 
+而 Java 的内存模型如下，完成静态变量的自增，自减需要在主存和工作内存中进行数据交换：
 
+![image-20230202183256109](01-JUC-%E9%BB%91%E9%A9%AC.assets/image-20230202183256109.png)
 
+如果是单线程以上8行代码是顺序执行（不会交错）没有问题：
 
+![image-20230202183444761](01-JUC-%E9%BB%91%E9%A9%AC.assets/image-20230202183444761.png)
 
+但多线程下这 8 行代码可能交错运行：
 
+出现负数的情况：
 
+![image-20230202183530789](01-JUC-%E9%BB%91%E9%A9%AC.assets/image-20230202183530789.png)
 
+出现正数的情况：
 
+![image-20230202183618090](01-JUC-%E9%BB%91%E9%A9%AC.assets/image-20230202183618090.png)
 
 
 
+#### 1.4 临界区Critical Section
 
+- 一个程序运行多个线程本身是没有问题的
 
+- 问题出在多个线程访问**共享资源** 
 
+  - 多个线程读**共享资源**其实也没有问题 
 
+  - 在多个线程对**共享资源**读写操作时发生指令交错，就会出现问题
 
+- 一段代码块内如果存在对共享资源的多线程读写操作，称这段代码块为**临界区**
 
+```java
+static int counter = 0;
+static void increment()
+// 临界区
+{
+    counter++;
+}
 
+static void decrement()
+// 临界区
+{
+    counter--;
+}
+```
 
 
 
+#### 1.5 竞态条件Race Condition
 
+多个线程在临界区内执行，由于代码的**执行序列不同**而导致结果无法预测，称之为发生了**竞态条件**
 
 
 
+### 2 synchronized解决方案
 
+#### 2.1 应用之互斥
 
+为了避免临界区的竞态条件发生，有多种手段可以达到目的。
 
+- 阻塞式的解决方案：synchronized，Lock
+- 非阻塞式的解决方案：原子变量 
 
+本次课使用阻塞式的解决方案：synchronized，来解决上述问题，即俗称的【对象锁】，它采用互斥的方式让同一时刻至多只有一个线程能持有【对象锁】，其它线程再想获取这个【对象锁】时就会阻塞住。这样就能保证拥有锁的线程可以安全的执行临界区内的代码，不用担心线程上下文切换
 
+> **注意** 
+>
+> 虽然 java 中互斥和同步都可以采用 synchronized 关键字来完成，但它们还是有区别的：
+>
+> - 互斥是保证临界区的竞态条件发生，同一时刻只能有一个线程执行临界区代码
+> - 同步是由于线程执行的先后、顺序不同、需要一个线程等待其它线程运行到某个点
 
 
 
+#### 2.2 synchronized
 
+语法
 
+```java
+synchronized(对象) // 线程1持有锁对象，线程2(blocked)
+{
+    临界区
+}
+```
 
+解决
 
+```java
+static int counter = 0;
+static final Object room = new Object();
 
+public static void main(String[] args) throws InterruptedException {
+    Thread t1 = new Thread(() -> {
+        for (int i = 0; i < 5000; i++) {
+            synchronized (room) {
+                counter++;
+            }
+        }
+    }, "t1");
+    
+    Thread t2 = new Thread(() -> {
+        for (int i = 0; i < 5000; i++) {
+            synchronized (room) {
+                counter--;
+            }
+        }
+    }, "t2");
+    
+    t1.start();
+    t2.start();
+    t1.join();
+    t2.join();
+    log.debug("{}",counter);
+}
+```
 
+![image-20230202184345352](01-JUC-%E9%BB%91%E9%A9%AC.assets/image-20230202184345352.png)
 
+你可以做这样的类比：
 
+- `synchronized(对象)`中的对象，可以想象为一个房间（room），有唯一入口（门）房间只能一次进入一人进行计算，线程t1，t2想象成两个人
+- 当线程 t1 执行到`synchronized(room)`时就好比 t1 进入了这个房间，并锁住了门拿走了钥匙，在门内执行`count++`代码
+- 这时候如果 t2 也运行到了`synchronized(room)`时，它发现门被锁住了，只能在门外等待，发生了上下文切换，阻塞住了
+- 这中间即使 t1 的 cpu 时间片不幸用完，被踢出了门外（不要错误理解为锁住了对象就能一直执行下去哦），这时门还是锁住的，t1 仍拿着钥匙，t2 线程还在阻塞状态进不来，只有下次轮到 t1 自己再次获得时间片时才能开门进入
+- 当 t1 执行完`synchronized{}`块内的代码，这时候才会从 obj 房间出来并解开门上的锁，唤醒 t2 线程把钥匙给他。t2 线程这时才可以进入 obj 房间，锁住了门拿上钥匙，执行它的`count--`代码
 
+用图来表示：
 
+![QQ截图20230202184804](01-JUC-%E9%BB%91%E9%A9%AC.assets/QQ%E6%88%AA%E5%9B%BE20230202184804.png)
 
 
 
+#### 2.3 思考
 
+synchronized 实际是用**对象锁**保证了**临界区内代码的原子性**，临界区内的代码对外是不可分割的，不会被线程切换所打断。 
 
+为了加深理解，请思考下面的问题
 
+- 如果把 `synchronized(obj)` 放在 for 循环的外面，如何理解？-- 原子性 
+- 如果 t1 `synchronized(obj1)` 而 t2 `synchronized(obj2)` 会怎样运作？-- 锁对象 
+- 如果 t1 `synchronized(obj)` 而 t2 没有加会怎么样？如何理解？-- 锁对象
 
 
 
+#### 2.4 面向对象改进
 
+把需要保护的共享变量放入一个类
 
+```java
+class Room {
+    int value = 0;
+    
+    public void increment() {
+        synchronized (this) {
+            value++;
+        }
+    }
+    
+    public void decrement() {
+        synchronized (this) {
+            value--;
+        }
+    }
+    
+    public int get() {
+        synchronized (this) {
+            return value;
+        }
+    }
+}
 
+@Slf4j
+public class Test1 {
 
+    public static void main(String[] args) throws InterruptedException {
+        Room room = new Room();
+        
+        Thread t1 = new Thread(() -> {
+            for (int j = 0; j < 5000; j++) {
+                room.increment();
+            }
+        }, "t1");
+        
+        Thread t2 = new Thread(() -> {
+            for (int j = 0; j < 5000; j++) {
+                room.decrement();
+            }
+        }, "t2");
+        
+        t1.start();
+        t2.start();
+        t1.join();
+        t2.join();
+        log.debug("count: {}" , room.get());
+    }
+}
+```
 
 
 
+### 3 方法上的synchronized
 
+- 成员方法(非静态方法)上加synchronized，锁对象是当前对象(`this`)
+- 静态方法上加synchronized，锁对象是`当前类的类名.class`，即类锁、类对象
 
+```java
+class Test{
+    public synchronized void test() {
 
+    }
+}
+
+//等价于
+
+class Test{
+    public void test() {
+        synchronized(this) {
+
+        }
+    }
+}
+```
+
+```java
+class Test{
+    public synchronized static void test() {
+    }
+}
+
+// 等价于
+
+class Test{
+    public static void test() {
+        synchronized(Test.class) {
+
+        }
+    }
+}
+```
+
+
+
+#### 3.1 不加 synchronized 的方法
+
+不加 synchronzied 的方法就好比不遵守规则的人，不去老实排队（好比翻窗户进去的）
+
+
+
+#### 3.2 所谓的“线程八锁”
+
+其实就是考察 synchronized 锁住的是哪个对象
+
+情况1：`12` 或 `21`
+
+```java
+@Slf4j(topic = "c.Number")
+class Number{
+    public synchronized void a() {
+        log.debug("1");
+    }
+    public synchronized void b() {
+        log.debug("2");
+    }
+}
+
+public static void main(String[] args) {
+    Number n1 = new Number();
+    new Thread(()->{ n1.a(); }).start();
+    new Thread(()->{ n1.b(); }).start();
+}
+```
+
+情况2：`1s后 12` 或 `2 1s后 1`
+
+```java
+@Slf4j(topic = "c.Number")
+class Number{
+    public synchronized void a() {
+        sleep(1);
+        log.debug("1");
+    }
+    public synchronized void b() {
+        log.debug("2");
+    }
+}
+
+public static void main(String[] args) {
+    Number n1 = new Number();
+    new Thread(()->{ n1.a(); }).start();
+    new Thread(()->{ n1.b(); }).start();
+}
+```
+
+情况3：`3 1s后 12` 或 `23 1s后 1` 或 `32 1s后 1`
+
+```java
+@Slf4j(topic = "c.Number")
+class Number{
+    public synchronized void a() {
+        sleep(1);
+        log.debug("1");
+    }
+    public synchronized void b() {
+        log.debug("2");
+    }
+    public void c() {
+        log.debug("3");
+    }
+}
+
+public static void main(String[] args) {
+    Number n1 = new Number();
+    new Thread(()->{ n1.a(); }).start();
+    new Thread(()->{ n1.b(); }).start();
+    new Thread(()->{ n1.c(); }).start();
+}
+```
+
+情况4：`2 1s后 1`
+
+```java
+@Slf4j(topic = "c.Number")
+class Number{
+    public synchronized void a() {
+        sleep(1);
+        log.debug("1");
+    }
+    public synchronized void b() {
+        log.debug("2");
+    }
+}
+
+public static void main(String[] args) {
+    Number n1 = new Number();
+    Number n2 = new Number();
+    new Thread(()->{ n1.a(); }).start();
+    new Thread(()->{ n2.b(); }).start();
+}
+```
+
+情况5：`2 1s后 1`
+
+```java
+@Slf4j(topic = "c.Number")
+class Number{
+    public static synchronized void a() {
+        sleep(1);
+        log.debug("1");
+    }
+    public synchronized void b() {
+        log.debug("2");
+    }
+}
+
+public static void main(String[] args) {
+    Number n1 = new Number();
+    new Thread(()->{ n1.a(); }).start();
+    new Thread(()->{ n1.b(); }).start();
+}
+```
+
+情况6：`1s后 12` 或 `2 1s后 1`
+
+```java
+@Slf4j(topic = "c.Number")
+class Number{
+    public static synchronized void a() {
+        sleep(1);
+        log.debug("1");
+    }
+    public static synchronized void b() {
+        log.debug("2");
+    }
+}
+public static void main(String[] args) {
+    Number n1 = new Number();
+    new Thread(()->{ n1.a(); }).start();
+    new Thread(()->{ n1.b(); }).start();
+}
+```
+
+情况7：`2 1s后 1`
+
+```java
+@Slf4j(topic = "c.Number")
+class Number{
+    public static synchronized void a() {
+        sleep(1);
+        log.debug("1");
+    }
+    public synchronized void b() {
+        log.debug("2");
+    }
+}
+public static void main(String[] args) {
+    Number n1 = new Number();
+    Number n2 = new Number();
+    new Thread(()->{ n1.a(); }).start();
+    new Thread(()->{ n2.b(); }).start();
+}
+```
+
+情况8：`1s后 12` 或 `2 1s后 1`
+
+```java
+@Slf4j(topic = "c.Number")
+class Number{
+    public static synchronized void a() {
+        sleep(1);
+        log.debug("1");
+    }
+    public static synchronized void b() {
+        log.debug("2");
+    }
+}
+public static void main(String[] args) {
+    Number n1 = new Number();
+    Number n2 = new Number();
+    new Thread(()->{ n1.a(); }).start();
+    new Thread(()->{ n2.b(); }).start();
+}
+```
+
+
+
+### 4 变量的线程安全分析
+
+#### 4.1 成员变量和静态变量是否线程安全？
+
+- 如果它们没有共享，则线程安全
+- 如果它们被共享了，根据它们的状态是否能够改变，又分两种情况
+  - 如果只有读操作，则线程安全
+  - 如果有读写操作，则这段代码是临界区，需要考虑线程安全
+
+
+
+#### 4.2 局部变量是否线程安全？
+
+- 局部变量是线程安全的
+- 但局部变量引用的对象则未必
+  - 如果该对象没有逃离方法的作用访问，它是线程安全的
+  - 如果该对象逃离方法的作用范围，需要考虑线程安全
+
+
+
+#### 4.3 局部变量线程安全分析
+
+```java
+public static void test1() {
+    int i = 10;
+    i++;
+}
+```
+
+每个线程调用 test1() 方法时局部变量i，会在每个线程的栈帧内存中被创建多份，因此不存在共享
+
+```java
+public static void test1();
+ 	descriptor: ()V 
+ 	flags: ACC_PUBLIC, ACC_STATIC
+ 	Code:
+ 		stack=1, locals=1, args_size=0
+			0: bipush 10
+ 			2: istore_0
+ 			3: iinc 0, 1
+ 			6: return
+ 		LineNumberTable:
+ 			line 10: 0
+ 			line 11: 3
+ 			line 12: 6
+ 		LocalVariableTable:
+ 			Start Length Slot Name Signature
+ 			3        4     0   i      I
+```
+
+如图：
+
+![image-20230203163921103](./01-JUC-%E9%BB%91%E9%A9%AC.assets/image-20230203163921103.png)
+
+
+
+局部变量的引用稍有不同
+
+先看一个成员变量的例子
+
+```java
+class ThreadUnsafe {
+    ArrayList<String> list = new ArrayList<>();
+    public void method1(int loopNumber) {
+        for (int i = 0; i < loopNumber; i++) {
+            // { 临界区, 会产生竞态条件
+            method2();
+            method3();
+            // } 临界区
+        }
+    }
+    private void method2() {
+        list.add("1");
+    }
+    private void method3() {
+        list.remove(0);
+    }
+}
+```
+
+执行
+
+```java
+static final int THREAD_NUMBER = 2;
+static final int LOOP_NUMBER = 200;
+public static void main(String[] args) {
+    ThreadUnsafe test = new ThreadUnsafe();
+    for (int i = 0; i < THREAD_NUMBER; i++) {
+        new Thread(() -> {
+            test.method1(LOOP_NUMBER);
+        }, "Thread" + i).start();
+    }
+}
+```
+
+其中一种情况是，如果线程2 还未 add，线程1 remove 就会报错：
+
+```java
+Exception in thread "Thread1" java.lang.IndexOutOfBoundsException: Index: 0, Size: 0 
+ at java.util.ArrayList.rangeCheck(ArrayList.java:657) 
+ at java.util.ArrayList.remove(ArrayList.java:496) 
+ at cn.itcast.n6.ThreadUnsafe.method3(TestThreadSafe.java:35) 
+ at cn.itcast.n6.ThreadUnsafe.method1(TestThreadSafe.java:26) 
+ at cn.itcast.n6.TestThreadSafe.lambda$main$0(TestThreadSafe.java:14) 
+ at java.lang.Thread.run(Thread.java:748) 
+```
+
+分析： 
+
+- 无论哪个线程中的 method2 引用的都是同一个对象中的 list 成员变量 
+- method3 与 method2 分析相同
+
+![image-20230203164134909](./01-JUC-%E9%BB%91%E9%A9%AC.assets/image-20230203164134909.png)
+
+将 list 修改为局部变量
+
+```java
+class ThreadSafe {
+    public final void method1(int loopNumber) {
+        ArrayList<String> list = new ArrayList<>();
+        for (int i = 0; i < loopNumber; i++) {
+            method2(list);
+            method3(list);
+        }
+    }
+    private void method2(ArrayList<String> list) {
+        list.add("1");
+    }
+    private void method3(ArrayList<String> list) {
+        list.remove(0);
+    }
+}
+```
+
+那么就不会有上述问题了
+
+分析： 
+
+- list 是局部变量，每个线程调用时会创建其不同实例，没有共享 
+- 而 method2 的参数是从 method1 中传递过来的，与 method1 中引用同一个对象 
+- method3 的参数分析与 method2 相同
+
+![image-20230203164219027](./01-JUC-%E9%BB%91%E9%A9%AC.assets/image-20230203164219027.png)
+
+方法访问修饰符带来的思考，如果把 method2 和 method3 的方法修改为 public 会不会代理线程安全问题？
+
+- 情况1：有其它线程调用 method2 和 method3 
+- 情况2：在 情况1 的基础上，为 ThreadSafe 类添加子类，子类覆盖 method2 或 method3 方法，即
+
+```java
+class ThreadSafe {
+    public final void method1(int loopNumber) {
+        ArrayList<String> list = new ArrayList<>();
+        for (int i = 0; i < loopNumber; i++) {
+            method2(list);
+            method3(list);
+        }
+    }
+    private void method2(ArrayList<String> list) {
+        list.add("1");
+    }
+    private void method3(ArrayList<String> list) {
+        list.remove(0);
+    }
+}
+
+class ThreadSafeSubClass extends ThreadSafe{
+    @Override
+    public void method3(ArrayList<String> list) {
+        new Thread(() -> {
+            list.remove(0);
+        }).start();
+    }
+}
+```
+
+> 从这个例子可以看出 private 或 final 提供【安全】的意义所在，请体会开闭原则中的【闭】
+
+
+
+#### 4.4 常见线程安全类
+
+- String 
+- Integer 等包装类
+- StringBuffer
+- Random
+- Vector 
+- Hashtable
+- java.util.concurrent 包下的类
+
+这里说它们是线程安全的是指，多个线程调用它们同一个实例的某个方法时，是线程安全的。也可以理解为
+
+```java
+Hashtable table = new Hashtable();
+new Thread(()->{
+    table.put("key", "value1");
+}).start();
+new Thread(()->{
+    table.put("key", "value2");
+}).start();
+```
+
+- 它们的每个方法是原子的 
+- 但注意它们多个方法的组合不是原子的，见后面分析
+
+
+
+##### 4.4.1 线程安全类方法的组合
+
+分析下面代码是否线程安全？
+
+```java
+Hashtable table = new Hashtable();
+// 线程1，线程2
+if( table.get("key") == null) {
+	table.put("key", value);
+}
+```
+
+![image-20230203164820594](./01-JUC-%E9%BB%91%E9%A9%AC.assets/image-20230203164820594.png)
+
+
+
+##### 4.4.2 不可变类线程安全性
+
+String、Integer 等都是不可变类，因为其内部的状态不可以改变，因此它们的方法都是线程安全的
+
+有同学或许有疑问，String 有 replace，substring 等方法【可以】改变值啊，那么这些方法又是如何保证线程安全的呢？
+
+```java
+public class Immutable{
+    private int value = 0;
+    public Immutable(int value){
+        this.value = value;
+    }
+    public int getValue(){
+        return this.value;
+    }
+}
+```
+
+如果想增加一个增加的方法呢？
+
+```java
+public class Immutable{
+    private int value = 0;
+    public Immutable(int value){
+        this.value = value;
+    }
+    public int getValue(){
+        return this.value;
+    }
+
+    public Immutable add(int v){
+        return new Immutable(this.value + v);
+    }
+}
+```
+
+
+
+#### 4.5 实例分析
+
+例1：
+
+```java
+public class MyServlet extends HttpServlet {
+    // 是否安全？ 不安全
+    Map<String,Object> map = new HashMap<>();
+    // 是否安全？ 安全 因为String类型是不可变类
+    String S1 = "...";
+    // 是否安全？ 安全
+    final String S2 = "...";
+    // 是否安全？ 不安全 
+    Date D1 = new Date(); 
+    // 是否安全？ 不安全 因为Date里面的属性会改变，即Date类型是可变类
+    final Date D2 = new Date();
+
+    public void doGet(HttpServletRequest request, HttpServletResponse response) {
+        // 使用上述变量
+    }
+}
+```
+
+例2：
+
+```java
+public class MyServlet extends HttpServlet {
+    // 是否安全？不安全
+    private UserService userService = new UserServiceImpl();
+
+    public void doGet(HttpServletRequest request, HttpServletResponse response) {
+        userService.update(...);
+    }
+}
+
+public class UserServiceImpl implements UserService {
+    // 记录调用次数
+    private int count = 0;
+
+    public void update() {
+        // ...
+        count++;
+    }
+}
+```
+
+例3：
+
+```java
+@Aspect
+@Component
+public class MyAspect {
+    // 是否安全？不安全
+    private long start = 0L;
+
+    @Before("execution(* *(..))")
+    public void before() {
+        start = System.nanoTime();
+    }
+
+    @After("execution(* *(..))")
+    public void after() {
+        long end = System.nanoTime();
+        System.out.println("cost time:" + (end-start));
+    }
+}
+```
+
+例4:
+
+```java
+public class MyServlet extends HttpServlet {
+    // 是否安全？ 安全
+    private UserService userService = new UserServiceImpl();
+
+    public void doGet(HttpServletRequest request, HttpServletResponse response) {
+        userService.update(...);
+    }
+}
+public class UserServiceImpl implements UserService {
+    // 是否安全？ 安全
+    private UserDao userDao = new UserDaoImpl();
+
+    public void update() {
+        userDao.update();
+    }
+}
+
+public class UserDaoImpl implements UserDao {
+    public void update() {
+        String sql = "update user set password = ? where username = ?";
+        // 是否安全？ 安全，无成员变量
+        try (Connection conn = DriverManager.getConnection("","","")){
+            // ...
+        } catch (Exception e) {
+            // ...
+        }
+    }
+}
+```
+
+例5:
+
+```java
+public class MyServlet extends HttpServlet {
+    // 是否安全
+    private UserService userService = new UserServiceImpl();
+
+    public void doGet(HttpServletRequest request, HttpServletResponse response) {
+        userService.update(...);
+    }
+}
+
+public class UserServiceImpl implements UserService {
+    // 是否安全？ 
+    private UserDao userDao = new UserDaoImpl();
+
+    public void update() {
+        userDao.update();
+    }
+}
+
+public class UserDaoImpl implements UserDao {
+    // 是否安全？ 不安全
+    private Connection conn = null;
+    public void update() throws SQLException {
+        String sql = "update user set password = ? where username = ?";
+        conn = DriverManager.getConnection("","","");
+        // ...
+        conn.close();
+    }
+}
+```
+
+例6：
+
+```java
+public class MyServlet extends HttpServlet {
+    // 是否安全
+    private UserService userService = new UserServiceImpl();
+
+    public void doGet(HttpServletRequest request, HttpServletResponse response) {
+        userService.update(...);
+    }
+}
+
+public class UserServiceImpl implements UserService {
+    public void update() {
+        UserDao userDao = new UserDaoImpl();
+        userDao.update();
+    }
+}
+
+public class UserDaoImpl implements UserDao {
+    // 是否安全？无线程问题，因为UserServiceImpl中使用的是新new的UserDao
+    private Connection = null;
+    public void update() throws SQLException {
+        String sql = "update user set password = ? where username = ?";
+        conn = DriverManager.getConnection("","","");
+        // ...
+        conn.close();
+    }
+}
+```
+
+例7:
+
+```java
+public abstract class Test {
+    public void bar() {
+        // 是否安全？不安全
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+        foo(sdf);
+    }
+
+    public abstract foo(SimpleDateFormat sdf);
+
+
+    public static void main(String[] args) {
+        new Test().bar();
+    }
+}
+```
+
+其中 foo 的行为是不确定的，可能导致不安全的发生，被称之为**外星方法**
+
+```java
+public void foo(SimpleDateFormat sdf) {
+    String dateStr = "1999-10-11 00:00:00";
+    for (int i = 0; i < 20; i++) {
+        new Thread(() -> {
+            try {
+                sdf.parse(dateStr);
+            } catch (ParseException e) {
+                e.printStackTrace();
+            }
+        }).start();
+    }
+}
+```
+
+请比较 JDK 中 String 类的实现
+
+例8：
+
+```java
+private static Integer i = 0;
+public static void main(String[] args) throws InterruptedException {
+    List<Thread> list = new ArrayList<>();
+    for (int j = 0; j < 2; j++) {
+        Thread thread = new Thread(() -> {
+            for (int k = 0; k < 5000; k++) {
+                synchronized (i) {
+                    i++;
+                }
+            }
+        }, "" + j);
+        list.add(thread);
+    }
+    list.stream().forEach(t -> t.start());
+    list.stream().forEach(t -> {
+        try {
+            t.join();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+    });
+    log.debug("{}", i);
+}
+```
+
+
+
+### 5 习题
+
+#### 5.1 卖票练习
+
+测试下面代码是否存在线程安全问题，并尝试改正
+
+- 将sell方法声明为synchronized即可
+- 注意只将对count进行修改的一行代码用synchronized括起来也不行。对count大小的判断也必须是为原子操作的一部分，否则也会导致count值异常。
+
+```java
+public class ExerciseSell throws InterruptedException {
+    public static void main(String[] args) {
+        TicketWindow ticketWindow = new TicketWindow(2000);
+        // 所有线程的集合
+        List<Thread> list = new ArrayList<>();
+        // 用来存储卖出去多少张票
+        List<Integer> sellCount = new Vector<>();
+        for (int i = 0; i < 2000; i++) {
+            Thread t = new Thread(() -> {
+                // 分析这里的竞态条件
+                int count = ticketWindow.sell(randomAmount());
+                sellCount.add(count);
+            });
+            list.add(t);
+            t.start();
+        }
+        for (Thread thread : list) {
+            thread.join();
+        }
+        // 统计卖出的票数和剩余的票数
+        // 买出去的票求和
+        log.debug("selled count:{}", sellCount.stream().mapToInt(c -> c).sum());
+        // 剩余票数
+        log.debug("remainder count:{}", ticketWindow.getCount());
+    }
+    
+    // Random 为线程安全
+    private static Random random = new Random();
+    // 随机 1~5
+    private static int randomAmount() {
+        return random.nextInt(5) + 1;
+    }
+}
+
+class TicketWindow {
+    private int count;
+    
+    public TicketWindow(int count) {
+        this.count = count;
+    }
+    
+    public int getCount() {
+        return count;
+    }
+    
+    //在方法上加一个synchronized即可
+    public int sell(int amount) {
+        if (this.count >= amount) {
+            this.count -= amount;
+            return amount;
+        } else {
+            return 0;
+        }
+    }
+}    
+```
+
+另外，用下面的代码行不行，为什么？
+
+- 不行，因为sellCount会被多个线程共享，必须使用线程安全的实现类。
+
+```java
+List<Integer> sellCount = new ArrayList<>();
+```
+
+- 两段没有前后因果关系的临界区代码，只需要保证各自的原子性即可，不需要括起来。
+
+
+
+#### 5.2 转账练习
+
+测试下面代码是否存在线程安全问题，并尝试改正
+
+- 将transfer方法的方法体用同步代码块包裹，将当Account.class设为锁对象。
+
+```java
+public class ExerciseTransfer {
+    public static void main(String[] args) throws InterruptedException {
+        Account a = new Account(1000);
+        Account b = new Account(1000);
+        
+        Thread t1 = new Thread(() -> {
+            for (int i = 0; i < 1000; i++) {
+                a.transfer(b, randomAmount());
+            }
+        }, "t1");
+        
+        Thread t2 = new Thread(() -> {
+            for (int i = 0; i < 1000; i++) {
+                b.transfer(a, randomAmount());
+            }
+        }, "t2");
+        
+        t1.start();
+        t2.start();
+        t1.join();
+        t2.join();
+        // 查看转账2000次后的总金额
+        log.debug("total:{}",(a.getMoney() + b.getMoney()));
+    }
+    
+    // Random 为线程安全
+    static Random random = new Random();
+    // 随机 1~100
+    public static int randomAmount() {
+        return random.nextInt(100) +1;
+    }
+}
+
+// 账户
+class Account {
+    private int money;
+    public Account(int money) {
+        this.money = money;
+    }
+    public int getMoney() {
+        return money;
+    }
+    public void setMoney(int money) {
+        this.money = money;
+    }
+    
+    public void transfer(Account target, int amount) {
+        if (this.money > amount) {
+            this.setMoney(this.getMoney() - amount);
+            target.setMoney(target.getMoney() + amount);
+        }
+    }
+}
+```
+
+解决：
+
+```java
+public void transfer(Account target, int amount) {
+    synchronized (Account.class) {
+        if (this.money > amount) {
+            this.setMoney(this.getMoney() - amount);
+            target.setMoney(target.getMoney() + amount);
+        }
+    }
+}
+```
+
+这样改正行不行，为什么？
+
+- 不行，因为不同线程调用此方法，将会锁住不同的对象
+
+```java
+public synchronized void transfer(Account target, int amount) {
+    if (this.money > amount) {
+        this.setMoney(this.getMoney() - amount);
+        target.setMoney(target.getMoney() + amount);
+    }
+}
+```
+
+
+
+### 6 Monitor概念
+
+#### 6.1 Java对象头
+
+以 32 位虚拟机为例
+
+普通对象
+
+```ruby
+|--------------------------------------------------------------|
+|                    Object Header (64 bits)                   |
+|------------------------------------|-------------------------|
+|       Mark Word (32 bits)          |   Klass Word (32 bits)  |
+|------------------------------------|-------------------------|
+```
+
+数组对象
+
+```ruby
+|---------------------------------------------------------------------------------|
+|                             Object Header (96 bits)                             |
+|--------------------------------|-----------------------|------------------------|
+|        Mark Word(32bits)       |   Klass Word(32bits)  |  array length(32bits)  |
+|--------------------------------|-----------------------|------------------------|
+```
+
+其中 Mark Word 结构为
+
+```ruby
+|-------------------------------------------------------|--------------------|
+|                  Mark Word (32 bits)                  |        State       |
+|-------------------------------------------------------|--------------------|
+|    hashcode:25  | age:4 |   biased_lock:0   |   01    |       Normal       |
+|-------------------------------------------------------|--------------------|
+|thread:23|epoch:2| age:4 |   biased_lock:1   |   01    |       Biased       |
+|-------------------------------------------------------|--------------------|
+|          ptr_to_lock_record:30              |   00    | Lightweight Locked |
+|-------------------------------------------------------|--------------------|
+|          ptr_to_heavyweight_monitor:30      |   10    | Heavyweight Locked |
+|-------------------------------------------------------|--------------------|
+|                                             |   11    |    Marked for GC   |
+|-------------------------------------------------------|--------------------|
+```
+
+64 位虚拟机 Mark Word
+
+```ruby
+|--------------------------------------------------------------------|--------------------|
+|                          Mark Word (64 bits)                       |        State       |
+|--------------------------------------------------------------------|--------------------|
+| unused:25 | hashcode:31 | unused:1 | age:4 | biased_lock:0 |  01   |        Normal      |
+|--------------------------------------------------------------------|--------------------|
+| thread:54 |   epoch:2   | unused:1 | age:4 | biased_lock:1 |  01   |        Biased      |
+|--------------------------------------------------------------------|--------------------|
+|                    ptr_to_lock_record:62                   |  00   | Lightweight Locked |
+|--------------------------------------------------------------------|--------------------|
+|                 ptr_to_heavyweight_monitor:62              |  10   | Heavyweight Locked |
+|--------------------------------------------------------------------|--------------------|
+|                                                            |  11   |    Marked for GC   |
+|--------------------------------------------------------------------|--------------------|
+```
+
+> 参考资料
+>
+> https://stackoverflow.com/questions/26357186/what-is-in-java-object-header
 
 
 
