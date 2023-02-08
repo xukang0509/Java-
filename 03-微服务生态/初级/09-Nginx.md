@@ -181,7 +181,7 @@ Nginx是一款轻量级的Web服务器/反向代理服务器及电子邮件（IM
   ExecStop=/usr/local/nginx/sbin/nginx -s stop
   ExecQuit=/usr/local/nginx/sbin/nginx -s quit 
   PrivateTmp=true
-    
+  
   [Install]   
   WantedBy=multi-user.target  # 多用户
   ```
