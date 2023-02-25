@@ -1381,7 +1381,7 @@ Docker容器产生的数据，如果不备份，那么当容器实例删除后�
 1. 新建mysql容器实例
 
    ```
-   docker run -d -p 3306:3306 --privileged=true -v /zzyyuse/mysql/log:/var/log/mysql -v /zzyyuse/mysql/data:/var/lib/mysql -v /zzyyuse/mysql/conf:/etc/mysql/conf.d -e MYSQL_ROOT_PASSWORD=123456  --name mysql mysql:5.7
+   docker run -d -p 3306:3306 --privileged=true -v /mysql/log:/var/log/mysql -v /mysql/data:/var/lib/mysql -v /mysql/conf:/etc/mysql/conf.d -e MYSQL_ROOT_PASSWORD=123456 --name mysql mysql:5.7
    
    docker run -d -p 3306:3306 --privileged=true 
    -v /zzyyuse/mysql/log:/var/log/mysql 
