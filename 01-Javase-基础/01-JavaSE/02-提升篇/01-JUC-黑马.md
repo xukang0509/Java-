@@ -13463,12 +13463,665 @@ public static void main(String[] args) {
 说明：
 
 - Semaphore有两个构造器：`Semaphore(int permits)`和`Semaphore(int permits,boolean fair)`。
-- permits表示允许同时访问共享资源的线程数。
-- fair表示公平与否，与之前的ReentrantLock一样。
+  - permits表示允许同时访问共享资源的线程数。
+  - fair表示公平与否，与之前的ReentrantLock一样。
+
 
 
 
 #### 5.2 Semaphore应用
+
+semaphore限制对共享资源的使用 
+
+- 使用 Semaphore 限流，在访问高峰期时，让请求线程阻塞，高峰期过去再释放许可，当然它只适合限制单机线程数量，并且仅是限制线程数，而不是限制资源数（例如连接数，请对比Tomcat LimitLatch的实现）
+- 用 Semaphore 实现简单连接池，对比『享元模式』下的实现（用wait notify），性能和可读性显然更好，注意下面的实现中线程数和数据库连接数是相等的
+
+```java
+class Pool {
+    // 1. 连接池大小
+    private final int poolSize;
+
+    // 2. 连接对象数组
+    private Connection[] connections;
+
+    // 3. 连接状态数组 0 表示空闲， 1 表示繁忙
+    private AtomicIntegerArray states;
+
+    private Semaphore semaphore;
+
+    // 4. 构造方法初始化
+    public Pool1(int poolSize) {
+        this.poolSize = poolSize;
+        // 让许可数与资源数一致
+        this.semaphore = new Semaphore(poolSize);
+        this.connections = new Connection[poolSize];
+        this.states = new AtomicIntegerArray(new int[poolSize]);
+        for (int i = 0; i < poolSize; i++) {
+            connections[i] = new MockConnection("连接" + (i+1));
+        }
+    }
+    
+    // 5. 借连接
+    public Connection borrow() {// t1, t2, t3
+        // 获取许可
+        try {
+            semaphore.acquire(); // 没有许可的线程，在此等待
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        for (int i = 0; i < poolSize; i++) {
+            // 获取空闲连接
+            if(states.get(i) == 0) {
+                if (states.compareAndSet(i, 0, 1)) {
+                    LogUtil.debug("borrow " + connections[i]);
+                    return connections[i];
+                }
+            }
+        }
+        // 不会执行到这里
+        return null;
+    }
+
+    // 6. 归还连接
+    public void free(Connection conn) {
+        for (int i = 0; i < poolSize; i++) {
+            if (connections[i] == conn) {
+                states.set(i, 0);
+                LogUtil.debug("free " + conn);
+                semaphore.release();
+                break;
+            }
+        }
+    }
+}
+```
+
+
+
+#### 5.3 Semaphore原理
+
+##### 5.3.1 加锁解锁流程
+
+Semaphore 有点像一个停车场，permits 就好像停车位数量，当线程获得了 permits 就像是获得了停车位，然后停车场显示空余车位减一
+刚开始，permits（state）为 3，这时 5 个线程来获取资源
+
+![image-20230227173949695](./01-JUC-%E9%BB%91%E9%A9%AC.assets/image-20230227173949695.png)
+
+假设其中 Thread-1，Thread-2，Thread-4 cas 竞争成功，而 Thread-0 和 Thread-3 竞争失败，进入 AQS 队列 park 阻塞
+
+![image-20230227174012978](./01-JUC-%E9%BB%91%E9%A9%AC.assets/image-20230227174012978.png)
+
+这时 Thread-4 释放了 permits，状态如下
+
+![image-20230227174027651](./01-JUC-%E9%BB%91%E9%A9%AC.assets/image-20230227174027651.png)
+
+接下来 Thread-0 竞争成功，permits 再次设置为 0，设置自己为 head 节点，断开原来的 head 节点，unpark 接下来的 Thread-3 节点，但由于 permits 是 0，因此 Thread-3 在尝试不成功后再次进入 park 状态
+
+![image-20230227174105108](./01-JUC-%E9%BB%91%E9%A9%AC.assets/image-20230227174105108.png)
+
+##### 5.3.2 源码分析
+
+```java
+static final class NonfairSync extends Sync {
+    private static final long serialVersionUID = -2694183684443567898L;
+    NonfairSync(int permits) {
+        // permits 即 state
+        super(permits);
+    }
+
+    // Semaphore 方法, 方便阅读, 放在此处
+    public void acquire() throws InterruptedException {
+        sync.acquireSharedInterruptibly(1);
+    }
+    
+    // AQS 继承过来的方法, 方便阅读, 放在此处
+    public final void acquireSharedInterruptibly(int arg)
+        throws InterruptedException {
+        if (Thread.interrupted())
+            throw new InterruptedException();
+        if (tryAcquireShared(arg) < 0)
+            doAcquireSharedInterruptibly(arg);
+    }
+
+    // 尝试获得共享锁
+    protected int tryAcquireShared(int acquires) {
+        return nonfairTryAcquireShared(acquires);
+    }
+
+    // Sync 继承过来的方法, 方便阅读, 放在此处
+    final int nonfairTryAcquireShared(int acquires) {
+        for (;;) {
+            int available = getState();
+            int remaining = available - acquires; 
+            if (
+                // 如果许可已经用完, 返回负数, 表示获取失败, 进入 doAcquireSharedInterruptibly
+                remaining < 0 ||
+                // 如果 cas 重试成功, 返回正数, 表示获取成功
+                compareAndSetState(available, remaining)
+            ) {
+                return remaining;
+            }
+        }
+    }
+
+    // AQS 继承过来的方法, 方便阅读, 放在此处
+    private void doAcquireSharedInterruptibly(int arg) throws InterruptedException {
+        final Node node = addWaiter(Node.SHARED);
+        boolean failed = true;
+        try {
+            for (;;) {
+                final Node p = node.predecessor();
+                if (p == head) {
+                    // 再次尝试获取许可
+                    int r = tryAcquireShared(arg);
+                    if (r >= 0) {
+                        // 成功后本线程出队（AQS）, 所在 Node设置为 head
+                        // 如果 head.waitStatus == Node.SIGNAL ==> 0 成功, 下一个节点 unpark
+                        // 如果 head.waitStatus == 0 ==> Node.PROPAGATE 
+                        // r 表示可用资源数, 为 0 则不会继续传播
+                        setHeadAndPropagate(node, r);
+                        p.next = null; // help GC
+                        failed = false;
+                        return;
+                    }
+                }
+                // 不成功, 设置上一个节点 waitStatus = Node.SIGNAL, 下轮进入 park 阻塞
+                if (shouldParkAfterFailedAcquire(p, node) &&
+                    parkAndCheckInterrupt())
+                    throw new InterruptedException();
+            }
+        } finally {
+            if (failed)
+                cancelAcquire(node);
+        }
+    }
+
+    // Semaphore 方法, 方便阅读, 放在此处
+    public void release() {
+        sync.releaseShared(1);
+    }
+
+    // AQS 继承过来的方法, 方便阅读, 放在此处
+    public final boolean releaseShared(int arg) {
+        if (tryReleaseShared(arg)) {
+            doReleaseShared();
+            return true;
+        }
+        return false;
+    }
+
+    // Sync 继承过来的方法, 方便阅读, 放在此处
+    protected final boolean tryReleaseShared(int releases) {
+        for (;;) {
+            int current = getState();
+            int next = current + releases;
+            if (next < current) // overflow
+                throw new Error("Maximum permit count exceeded");
+            if (compareAndSetState(current, next))
+                return true;
+        }
+    }
+}
+
+private void setHeadAndPropagate(Node node, int propagate) {
+    Node h = head; // Record old head for check below
+    // 设置自己为 head
+    setHead(node);
+    // propagate 表示有共享资源（例如共享读锁或信号量）
+    // 原 head waitStatus == Node.SIGNAL 或 Node.PROPAGATE
+    // 现在 head waitStatus == Node.SIGNAL 或 Node.PROPAGATE
+    if (propagate > 0 || h == null || h.waitStatus < 0 ||
+        (h = head) == null || h.waitStatus < 0) {
+        Node s = node.next;
+        // 如果是最后一个节点或者是等待共享读锁的节点
+        if (s == null || s.isShared()) {
+            doReleaseShared();
+        }
+    }
+}
+
+private void doReleaseShared() {
+    for (;;) {
+        Node h = head;
+        if (h != null && h != tail) {
+            int ws = h.waitStatus;
+            if (ws == Node.SIGNAL) {
+                if (!compareAndSetWaitStatus(h, Node.SIGNAL, 0))
+                    continue;            // loop to recheck cases
+                unparkSuccessor(h);
+            }
+            else if (ws == 0 &&
+                     !compareAndSetWaitStatus(h, 0, Node.PROPAGATE))
+                continue;                // loop on failed CAS
+        }
+        if (h == head)                   // loop if head changed
+            break;
+    }
+}
+```
+
+**加锁流程总结**：
+
+`acquire`->`acquireSharedInterruptibly(1)`->`tryAcquireShared(1)`->`nonfairTryAcquireShared(1)`，如果资源用完了，返回负数，`tryAcquireShared`返回负数，表示失败。否则返回正数，`tryAcquireShared`返回正数,表示成功。
+
+- 如果成功，获取信号量成功。
+- 如果失败，调用`doAcquireSharedInterruptibly`,进入for循环：
+  - 如果当前驱节点为头节点，调用`tryAcquireShared`尝试获取锁
+    - 如果结果大于等于0，表明获取锁成功，调用`setHeadAndPropagate`，将当前节点设为头节点，之后又调用`doReleaseShared`，唤醒后继节点。
+  - 调用`shoudParkAfterFailure`,第一次调用返回false，并将前驱节点改为-1，第二次循环如果再进入此方法，会进入阻塞并检查打断的方法。
+
+**解锁流程总结**：
+
+`release`->`sync.releaseShared(1)`->`tryReleaseShared(1)`,只要不发生整数溢出，就返回true
+
+- 如果返回true，调用`doReleaseShared`，唤醒后继节点。
+- 如果返回false，解锁失败。
+
+##### 5.3.3 为什么要有PROPAGATE
+
+
+
+### 6 CountdownLatch
+
+用来进行线程同步协作，等待所有线程完成倒计时。
+
+其中构造参数用来初始化等待计数值，`await()`用来等待计数归零，`countDown()`用来让计数减一
+
+```java
+public static void main(String[] args) throws InterruptedException {
+    CountDownLatch latch = new CountDownLatch(3);
+    
+    new Thread(() -> {
+        log.debug("begin...");
+        sleep(1);
+        latch.countDown();
+        log.debug("end...{}", latch.getCount());
+    }).start();
+    
+    new Thread(() -> {
+        log.debug("begin...");
+        sleep(2);
+        latch.countDown();
+        log.debug("end...{}", latch.getCount());
+    }).start();
+    
+    new Thread(() -> {
+        log.debug("begin...");
+        sleep(1.5);
+        latch.countDown();
+        log.debug("end...{}", latch.getCount());
+    }).start();
+    
+    log.debug("waiting...");
+    latch.await();
+    log.debug("wait end...");
+}
+```
+
+输出
+
+```sh
+18:44:00.778 c.TestCountDownLatch [main] - waiting... 
+18:44:00.778 c.TestCountDownLatch [Thread-2] - begin... 
+18:44:00.778 c.TestCountDownLatch [Thread-0] - begin... 
+18:44:00.778 c.TestCountDownLatch [Thread-1] - begin... 
+18:44:01.782 c.TestCountDownLatch [Thread-0] - end...2 
+18:44:02.283 c.TestCountDownLatch [Thread-2] - end...1 
+18:44:02.782 c.TestCountDownLatch [Thread-1] - end...0 
+18:44:02.782 c.TestCountDownLatch [main] - wait end... 
+```
+
+相比于join，CountDownLatch能配合线程池使用。
+
+```java
+public static void main(String[] args) throws InterruptedException {
+    CountDownLatch latch = new CountDownLatch(3);
+    ExecutorService service = Executors.newFixedThreadPool(4);
+    
+    service.submit(() -> {
+        log.debug("begin...");
+        sleep(1);
+        latch.countDown();
+        log.debug("end...{}", latch.getCount());
+    });
+    
+    service.submit(() -> {
+        log.debug("begin...");
+        sleep(1.5);
+        latch.countDown();
+        log.debug("end...{}", latch.getCount());
+    });
+    
+    service.submit(() -> {
+        log.debug("begin...");
+        sleep(2);
+        latch.countDown();
+        log.debug("end...{}", latch.getCount());
+    });
+    
+    service.submit(()->{
+        try {
+            log.debug("waiting...");
+            latch.await();
+            log.debug("wait end...");
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+    });
+}
+```
+
+```
+18:52:25.831 c.TestCountDownLatch [pool-1-thread-3] - begin... 
+18:52:25.831 c.TestCountDownLatch [pool-1-thread-1] - begin... 
+18:52:25.831 c.TestCountDownLatch [pool-1-thread-2] - begin... 
+18:52:25.831 c.TestCountDownLatch [pool-1-thread-4] - waiting... 
+18:52:26.835 c.TestCountDownLatch [pool-1-thread-1] - end...2 
+18:52:27.335 c.TestCountDownLatch [pool-1-thread-2] - end...1 
+18:52:27.835 c.TestCountDownLatch [pool-1-thread-3] - end...0 
+18:52:27.835 c.TestCountDownLatch [pool-1-thread-4] - wait end... 
+```
+
+
+
+#### 6.1 应用之同步等待多线程准备完毕
+
+```java
+private static void method3() throws InterruptedException {
+    AtomicInteger num = new AtomicInteger();
+    ExecutorService service = Executors.newFixedThreadPool(10, (r) -> {
+        return new Thread(r, "t" + num.getAndIncrement());
+    });
+    CountDownLatch latch = new CountDownLatch(10);
+    Random random = new Random();
+    String[] all = new String[10];
+    for (int j = 0; j < 10; j++) {
+        final int index = j;
+        service.submit(() -> {
+            for (int i = 0; i <= 100; i++) {
+                try {
+                    Thread.sleep(random.nextInt(100));
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+                all[index] = Thread.currentThread().getName() + "(" + i + "%" + ")";
+                System.out.print("\r" + Arrays.toString(all));
+            }
+            latch.countDown();
+        });
+    }
+    latch.await();
+    System.out.println("\n游戏开始");
+    service.shutdown();
+}
+```
+
+中间输出
+
+```sh
+[t0(52%), t1(47%), t2(51%), t3(40%), t4(49%), t5(44%), t6(49%), t7(52%), t8(46%), t9(46%)]
+```
+
+最后输出
+
+```sh
+[t0(100%), t1(100%), t2(100%), t3(100%), t4(100%), t5(100%), t6(100%), t7(100%), t8(100%), t9(100%)]
+游戏开始
+```
+
+
+
+#### 6.2 应用之同步等待多个远程调用结束
+
+```java
+@RestController
+public class TestCountDownlatchController {
+    @GetMapping("/order/{id}")
+    public Map<String, Object> order(@PathVariable int id) {
+        HashMap<String, Object> map = new HashMap<>();
+        map.put("id", id);
+        map.put("total", "2300.00");
+        sleep(2000);
+        return map;
+    }
+    
+    @GetMapping("/product/{id}")
+    public Map<String, Object> product(@PathVariable int id) {
+        HashMap<String, Object> map = new HashMap<>();
+        if (id == 1) {
+            map.put("name", "小爱音箱");
+            map.put("price", 300);
+        } else if (id == 2) {
+            map.put("name", "小米手机");
+            map.put("price", 2000);
+        }
+        map.put("id", id);
+        sleep(1000);
+        return map;
+    }
+    
+    @GetMapping("/logistics/{id}")
+    public Map<String, Object> logistics(@PathVariable int id) {
+        HashMap<String, Object> map = new HashMap<>();
+        map.put("id", id);
+        map.put("name", "中通快递");
+        sleep(2500);
+        return map;
+    }
+    
+    private void sleep(int millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+    }
+}
+```
+
+rest远程调用
+
+```java
+RestTemplate restTemplate = new RestTemplate();
+log.debug("begin");
+ExecutorService service = Executors.newCachedThreadPool();
+CountDownLatch latch = new CountDownLatch(4);
+
+Future<Map<String,Object>> f1 = service.submit(() -> {
+    Map<String, Object> r =
+        restTemplate.getForObject("http://localhost:8080/order/{1}", Map.class, 1);
+    return r;
+});
+
+Future<Map<String, Object>> f2 = service.submit(() -> {
+    Map<String, Object> r =
+        restTemplate.getForObject("http://localhost:8080/product/{1}", Map.class, 1);
+    return r;
+});
+
+Future<Map<String, Object>> f3 = service.submit(() -> {
+    Map<String, Object> r =
+        restTemplate.getForObject("http://localhost:8080/product/{1}", Map.class, 2);
+    return r;
+});
+
+Future<Map<String, Object>> f4 = service.submit(() -> {
+    Map<String, Object> r =
+        restTemplate.getForObject("http://localhost:8080/logistics/{1}", Map.class, 1);
+    return r;
+});
+
+System.out.println(f1.get());
+System.out.println(f2.get());
+System.out.println(f3.get());
+System.out.println(f4.get());
+log.debug("执行完毕");
+service.shutdown();
+```
+
+执行结果
+
+```sh
+19:51:39.711 c.TestCountDownLatch [main] - begin 
+{total=2300.00, id=1} 
+{price=300, name=小爱音箱, id=1} 
+{price=2000, name=小米手机, id=2} 
+{name=中通快递, id=1} 
+19:51:42.407 c.TestCountDownLatch [main] - 执行完毕
+```
+
+说明：
+
+- 这种等待多个带有返回值的任务的场景，还是用future比较合适，CountdownLatch适合任务没有返回值的场景。
+
+
+
+### 7 CyclicBarrier
+
+CountdownLatch的缺点在于不能重用，见下：
+
+```java
+private static void test1() {
+    ExecutorService service = Executors.newFixedThreadPool(5);
+    for (int i = 0; i < 3; i++) {
+        CountDownLatch latch = new CountDownLatch(2);
+        service.submit(() -> {
+            log.debug("task1 start...");
+            sleep(1);
+            latch.countDown();
+        });
+        service.submit(() -> {
+            log.debug("task2 start...");
+            sleep(2);
+            latch.countDown();
+        });
+        try {
+            latch.await();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        log.debug("task1 task2 finish...");
+    }
+    service.shutdown();
+}
+```
+
+想要重复使用CountdownLatch进行同步，必须创建多个CountDownLatch对象。
+
+
+
+[ˈsaɪklɪk ˈbæriɚ] 循环栅栏，用来进行线程协作，等待线程满足某个计数。构造时设置『计数个数』，每个线程执行到某个需要“同步”的时刻调用`await()`方法进行等待，当等待的线程数满足『计数个数』时，继续执行
+
+```java
+public static void main(String[] args) {
+    ExecutorService service = Executors.newFixedThreadPool(2);
+    CyclicBarrier barrier = new CyclicBarrier(2, () -> {
+        LogUtil.debug("task1, task2 finish...");
+    });
+
+    for (int i = 0; i < 3; i++) {
+        service.submit(() -> {
+            LogUtil.debug("task1 begin...");
+            Sleeper.sleep(1);
+            try {
+                barrier.await(); // 2 -1 = 1
+            } catch (InterruptedException | BrokenBarrierException e) {
+                throw new RuntimeException(e);
+            }
+        });
+
+        service.submit(() -> {
+            LogUtil.debug("task2 begin...");
+            Sleeper.sleep(2);
+            try {
+                barrier.await(); // 1 -1 = 0
+            } catch (InterruptedException | BrokenBarrierException e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
+}
+```
+
+输出
+
+```
+18:09:59.146 [pool-1-thread-2] - task2 begin...
+18:09:59.146 [pool-1-thread-1] - task1 begin...
+18:10:01.150 [pool-1-thread-2] - task1, task2 finish...
+18:10:01.150 [pool-1-thread-1] - task1 begin...
+18:10:01.150 [pool-1-thread-2] - task2 begin...
+18:10:03.159 [pool-1-thread-2] - task1, task2 finish...
+18:10:03.159 [pool-1-thread-2] - task1 begin...
+18:10:03.159 [pool-1-thread-1] - task2 begin...
+18:10:05.161 [pool-1-thread-1] - task1, task2 finish...
+```
+
+> **注意** 
+>
+> - CyclicBarrier 与 CountDownLatch 的主要区别在于 CyclicBarrier 是可以重用的；CyclicBarrier 可以被比喻为『人满发车』
+> - CountDownLatch的计数和阻塞方法是分开的两个方法，而CyclicBarrier是一个方法。
+> - CyclicBarrier的构造器还有一个Runnable类型的参数，在计数为0时会执行其中的run方法。
+
+
+
+### 8 线程安全集合类概述
+
+![image-20230227181257467](./01-JUC-%E9%BB%91%E9%A9%AC.assets/image-20230227181257467.png)
+
+线程安全集合类可以分为三大类： 
+
+1. 遗留的线程安全集合如`Hashtable`，` Vector `
+
+2. 使用`Collections`装饰的线程安全集合，如：
+
+   - `Collections.synchronizedCollection `
+   - `Collections.synchronizedList `
+   - `Collections.synchronizedMap `
+   - `Collections.synchronizedSet `
+   - `Collections.synchronizedNavigableMap `
+   - `Collections.synchronizedNavigableSet  `
+   - `Collections.synchronizedSortedMap `
+   - `Collections.synchronizedSortedSet `
+   - 说明：以上集合均采用修饰模式设计，将非线程安全的集合包装后，在调用方法时包裹了一层synchronized代码块。其并发性并不比遗留的安全集合好。
+
+3. java.util.concurrent.*
+
+   重点介绍`java.util.concurrent.* `下的线程安全集合类，可以发现它们有规律，里面包含三类关键词：Blocking、CopyOnWrite、Concurrent
+
+   - Blocking 大部分实现基于锁，并提供用来阻塞的方法
+
+   - CopyOnWrite 之类容器修改开销相对较重 
+
+   - Concurrent 类型的容器
+     - 内部很多操作使用 cas 优化，一般可以提供较高吞吐量 
+     - 弱一致性
+       - 遍历时弱一致性，例如，当利用迭代器遍历时，如果容器发生修改，迭代器仍然可以继续进行遍历，这时内容是旧的 
+       - 求大小弱一致性，size 操作未必是 100% 准确 
+       - 读取弱一致性
+
+
+> 遍历时如果发生了修改，对于非安全容器来讲，使用 **fail-fast** 机制也就是让遍历立刻失败，抛出 ConcurrentModificationException，不再继续遍历
+
+
+
+### 9 ConcurrentHashMap
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
