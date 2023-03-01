@@ -96,7 +96,7 @@ selector 单从字面意思不好理解，需要结合服务器的设计演化�
 
    
 
-   调用 selector 的 select() 会阻塞直到 channel 发生了读写就绪事件，这些事件发生，select 方法就会返回这些事件交给 thread 来处理
+   调用 selector 的 `select()` 会阻塞直到 channel 发生了读写就绪事件，这些事件发生，select 方法就会返回这些事件交给 thread 来处理
 
 
 
@@ -764,7 +764,7 @@ channel.position(newPos);
 
 ##### 强制写入
 
-操作系统出于性能的考虑，会将数据缓存，不是立刻写入磁盘。可以调用 force(true) 方法将文件内容和元数据（文件的权限等信息）立刻写入磁盘
+操作系统出于性能的考虑，会将数据缓存，不是立刻写入磁盘。可以调用 `force(true)` 方法将文件内容和元数据（文件的权限等信息）立刻写入磁盘
 
 
 
@@ -1325,10 +1325,9 @@ public class SelectServer {
         				// 获取连接并处理，而且是必须处理，否则需要取消
                         SocketChannel socketChannel = channel.accept();
                         System.out.println("after accepting...");
-                        
-                        // 处理完毕后移除
-                        iterator.remove();
                     }
+                    // 处理完毕后移除
+                    iterator.remove();
                 }
             }
         } catch (IOException e) {
@@ -1863,6 +1862,10 @@ public class WriteClient {
 
 ##### 💡 利用多线程优化
 
+> 现在都是多核 cpu，设计时要充分考虑别让 cpu 的力量被白白浪费
+
+前面的代码只有一个选择器，没有充分利用多核 cpu，如何改进呢？
+
 充分利用多核CPU，分两组选择器
 
 - 单线程配一个选择器（Boss），**专门处理 accept 事件**；
@@ -1870,189 +1873,1109 @@ public class WriteClient {
 
 **实现思路**：
 
+- 创建**一个**负责处理Accept事件的Boss线程，与**多个**负责处理Read事件的Worker线程
+
+- **Boss线程**执行的操作
+
+  - 接受并处理Accepet事件，当Accept事件发生后，调用Worker的register(SocketChannel socket)方法，让Worker去处理Read事件，其中需要**根据标识robin去判断将任务分配给哪个Worker**
+
+    ```java
+    // 创建固定数量的Worker
+    Worker[] workers = new Worker[2];
+    // 用于负载均衡的原子整数
+    AtomicInteger robin = new AtomicInteger(0);
+    // 负载均衡，轮询分配Worker
+    workers[robin.getAndIncrement() % workers.length].register(socket);
+    ```
+
+  - register(SocketChannel socket)方法会**通过同步队列完成Boss线程与Worker线程之间的通信**，让SocketChannel的注册任务被Worker线程执行。添加任务后需要调用selector.wakeup()来唤醒被阻塞的Selector
+
+    ```java
+    private ConcurrentLinkedQueue<Runnable> queue = new ConcurrentLinkedQueue<>();
+    
+    // 初始化线程 和 selector
+    public void register(SocketChannel sc) throws IOException {
+        if (!this.start) {
+            synchronized (this) {
+                if (this.start) return;
+                this.selector = Selector.open();
+                this.thread = new Thread(this, this.name);
+                this.thread.start();
+                this.start = true;
+            }
+        }
+        // 向队列添加了任务，但这个任务并没有被执行
+        queue.offer(() -> {
+            try {
+                sc.register(this.selector, SelectionKey.OP_READ, null);
+            } catch (ClosedChannelException e) {
+                e.printStackTrace();
+            }
+        });
+        // select类似LockSupport中的park，wakeup的原理类似LockSupport中的unpark
+        selector.wakeup(); // 唤醒 select 方法
+    }
+    ```
+
+- **Worker线程执行**的操作
+  - **从同步队列中获取注册任务，并处理Read事件**。
+
+实现代码
+
+```java
+@Slf4j
+public class MultiThreadServer {
+    public static void main(String[] args) throws IOException {
+        Thread.currentThread().setName("Boss");
+        ServerSocketChannel ssc = ServerSocketChannel.open();
+        ssc.configureBlocking(false);
+        Selector boss = Selector.open();
+        SelectionKey bossKey = ssc.register(boss, 0, null);
+        bossKey.interestOps(SelectionKey.OP_ACCEPT);
+        ssc.bind(new InetSocketAddress(9999));
+
+        // 1. 创建固定数量的 selector 并初始化
+        Worker[] workers = new Worker[2];
+        for (int i = 0; i < workers.length; i++) {
+            workers[i] = new Worker("worker-" + i);
+        }
+        // 计数器
+        AtomicInteger index = new AtomicInteger();
+        while (true) {
+            boss.select();
+            Iterator<SelectionKey> iter = boss.selectedKeys().iterator();
+            while (iter.hasNext()) {
+                SelectionKey key = iter.next();
+                iter.remove();
+                if (key.isAcceptable()) {
+                    SocketChannel sc = ssc.accept();
+                    sc.configureBlocking(false);
+                    log.debug("connected... {}", sc.getRemoteAddress());
+                    // 2. 关联 selector
+                    log.debug("before register... {}", sc.getRemoteAddress());
+                    workers[index.getAndIncrement() % workers.length].register(sc);// boss调用 创建 selector，启动 worker
+                    log.debug("after register... {}", sc.getRemoteAddress());
+                }
+            }
+        }
+    }
+
+    static class Worker implements Runnable {
+        private Thread thread;
+        private Selector selector;
+        private String name;
+
+        private volatile boolean start = false; // 还未初始化
+
+        private ConcurrentLinkedQueue<Runnable> queue = new ConcurrentLinkedQueue<>();
+
+        public Worker(String name) {
+            this.name = name;
+        }
+
+        // 初始化线程 和 selector
+        public void register(SocketChannel sc) throws IOException {
+            if (!this.start) {
+                synchronized (this) {
+                    if (this.start) return;
+                    this.selector = Selector.open();
+                    this.thread = new Thread(this, this.name);
+                    this.thread.start();
+                    this.start = true;
+                }
+            }
+            // 向队列添加了任务，但这个任务并没有被执行
+            queue.offer(() -> {
+                try {
+                    sc.register(this.selector, SelectionKey.OP_READ, null);
+                } catch (ClosedChannelException e) {
+                    e.printStackTrace();
+                }
+            });
+            selector.wakeup(); // 唤醒 select 方法
+        }
+
+        @Override
+        public void run() {
+            while (true) {
+                try {
+                    selector.select(); // worker-0 堵塞，wakeup
+                    Runnable task = queue.poll();
+                    if (task != null) {
+                        task.run(); // 执行了 sc.register(this.selector, SelectionKey.OP_READ, null);
+                    }
+                    Iterator<SelectionKey> it = selector.selectedKeys().iterator();
+                    while (it.hasNext()) {
+                        SelectionKey key = it.next();
+                        it.remove();
+                        if (key.isReadable()) {
+                            ByteBuffer buffer = ByteBuffer.allocate(16);
+                            SocketChannel channel = (SocketChannel) key.channel();
+                            log.debug("read... {}", channel.getRemoteAddress());
+                            channel.read(buffer);
+                            buffer.flip();
+                            debugAll(buffer);
+                        }
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+    }
+}
+```
+
+
+
+##### 💡 如何拿到 cpu 个数
+
+* `Runtime.getRuntime().availableProcessors()` 如果工作在 docker 容器下，因为容器不是物理隔离的，会拿到物理 cpu 个数，而不是容器申请时的个数
+* 这个问题直到 jdk 10 才修复，使用 jvm 参数 UseContainerSupport 配置，默认开启
+
+
+
+#### 4.7 UDP
+
+* UDP 是无连接的，client 发送数据不会管 server 是否开启
+* server 这边的 receive 方法会将接收到的数据存入 byte buffer，但如果数据报文超过 buffer 大小，多出来的数据会被默默抛弃
+
+首先启动服务器端
+
+```java
+public class UdpServer {
+    public static void main(String[] args) {
+        try (DatagramChannel channel = DatagramChannel.open()) {
+            channel.socket().bind(new InetSocketAddress(9999));
+            System.out.println("waiting...");
+            ByteBuffer buffer = ByteBuffer.allocate(16);
+            channel.receive(buffer);
+            buffer.flip();
+            debug(buffer);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+}
+```
 
+输出
 
+```
+waiting...
+```
 
+运行客户端
 
+```java
+public class UdpClient {
+    public static void main(String[] args) {
+        try (DatagramChannel channel = DatagramChannel.open()) {
+            ByteBuffer buffer = StandardCharsets.UTF_8.encode("hello");
+            InetSocketAddress address = new InetSocketAddress("localhost", 9999);
+            channel.send(buffer, address);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+}
+```
 
+接下来服务器端输出
 
+```
++--------+-------------------- all ------------------------+----------------+
+position: [0], limit: [5]
+         +-------------------------------------------------+
+         |  0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f |
++--------+-------------------------------------------------+----------------+
+|00000000| 68 65 6c 6c 6f 00 00 00 00 00 00 00 00 00 00 00 |hello...........|
++--------+-------------------------------------------------+----------------+
+```
 
 
 
+### 5 NIO VS BIO
 
+#### 5.1 stream vs channel
 
+- stream 不会自动缓冲数据，channel 会利用系统提供的发送缓冲区、接收缓冲区（更为底层）
+- stream 仅支持阻塞 API，channel 同时支持阻塞、非阻塞 API，**网络 channel 可配合 selector 实现多路复用**
+- 二者均为全双工，即读写可以同时进行
+  - 虽然Stream是单向流动的，但是它也是全双工的
 
 
 
+#### 5.2 IO模型
 
+- 同步：线程自己去获取结果（一个线程）
+  - 例如：线程调用一个方法后，需要等待方法返回结果
+- 异步：线程自己不去获取结果，而是由其它线程返回结果（至少两个线程）
+  - 例如：线程A调用一个方法后，继续向下运行，运行结果由线程B返回
 
+当调用一次 channel.**read** 或 stream.**read** 后，会由用户态切换至操作系统内核态来完成真正数据读取，而读取又分为两个阶段，分别为：
 
+- 等待数据阶段
+- 复制数据阶段
 
+![img](./03-Netty-%E9%BB%91%E9%A9%AC.assets/20210418151243.png)
 
+参考`UNIX网络编程-卷I`，IO模型主要有以下几种
 
 
 
+##### 堵塞IO
 
+![img](./03-Netty-%E9%BB%91%E9%A9%AC.assets/20210418151605.png)
 
+- 用户线程进行read操作时，**需要等待操作系统执行实际的read操作**，此期间用户线程是被阻塞的，无法执行其他操作
 
+##### 非堵塞IO
 
+![img](./03-Netty-%E9%BB%91%E9%A9%AC.assets/20210418152137.png)
 
+- 用户线程在一个循环中一直调用read方法，若内核空间中还没有数据可读，立即返回
+  - **只是在等待阶段非阻塞**
+- 用户线程发现内核空间中有数据后，等待内核空间执行复制数据，待复制结束后返回结果
 
+##### 多路复用
 
+![img](./03-Netty-%E9%BB%91%E9%A9%AC.assets/20210418154208.png)
 
+**Java中通过Selector实现多路复用**
 
+- 当没有事件时，调用select方法会被阻塞住
+- 一旦有一个或多个事件发生后，就会处理对应的事件，从而实现多路复用
 
+**多路复用与阻塞IO的区别**
 
+- 阻塞IO模式下，**若线程因accept事件被阻塞，发生read事件后，仍需等待accept事件执行完成后**，才能去处理read事件
+- 多路复用模式下，一个事件发生后，若另一个事件处于阻塞状态，不会影响该事件的执行
 
+##### 异步IO
 
+![img](./03-Netty-%E9%BB%91%E9%A9%AC.assets/20210418160106.png)
 
+- 线程1调用方法后理解返回，**不会被阻塞也不需要立即获取结果**
+- 当方法的运行结果出来以后，由线程2将结果返回给线程1
 
 
 
+#### 5.3 零拷贝
 
+**零拷贝指的是数据无需拷贝到 JVM 内存中**，同时具有以下三个优点
 
+- 更少的用户态与内核态的切换
+- 不利用 cpu 计算，减少 cpu 缓存伪共享
+- 零拷贝适合小文件传输
 
 
 
+##### 传统 IO 问题
 
+传统的 IO 将一个文件通过 socket 写出
 
+```java
+File f = new File("helloword/data.txt");
+RandomAccessFile file = new RandomAccessFile(file, "r");
 
+byte[] buf = new byte[(int)f.length()];
+file.read(buf);
 
+Socket socket = ...;
+socket.getOutputStream().write(buf);
+```
 
+**内部工作流如下**
 
+![img](./03-Netty-%E9%BB%91%E9%A9%AC.assets/20210418162306.png)
 
+- Java 本身并不具备 IO 读写能力，因此 read 方法调用后，要从 Java 程序的**用户态切换至内核态**，去调用操作系统（Kernel）的读能力，将数据读入**内核缓冲区**。这期间用户线程阻塞，操作系统使用 DMA（Direct Memory Access）来实现文件读，其间也不会使用 CPU
 
+  `DMA 也可以理解为硬件单元，用来解放 cpu 完成文件 IO`
 
+- 从**内核态**切换回**用户态**，将数据从**内核缓冲区**读入**用户缓冲区**（即 byte[] buf），这期间 **CPU 会参与拷贝**，无法利用 DMA
 
+- 调用 write 方法，这时将数据从**用户缓冲区**（byte[] buf）写入 **socket 缓冲区，CPU 会参与拷贝**
 
+- 接下来要向网卡写数据，这项能力 Java 又不具备，因此又得从**用户态**切换至**内核态**，调用操作系统的写能力，使用 DMA 将 **socket 缓冲区**的数据写入网卡，不会使用 CPU
 
+可以看到中间环节较多，java 的 IO 实际不是物理设备级别的读写，而是缓存的复制，底层的真正读写是操作系统来完成的
 
+- 用户态与内核态的切换发生了 3 次，这个操作比较重量级
+- 数据拷贝了共 4 次
 
 
 
+##### NIO优化
 
+通过 **DirectByteBuffer**
 
+- ByteBuffer.allocate(10)
+  - 底层对应 HeapByteBuffer，使用的还是 Java 内存
+- ByteBuffer.allocateDirect(10)
+  - 底层对应DirectByteBuffer，**使用的是操作系统内存**
 
+![img](./03-Netty-%E9%BB%91%E9%A9%AC.assets/20210418162410.png)
 
+大部分步骤与优化前相同，唯有一点：**Java 可以使用 DirectByteBuffer 将堆外内存映射到 JVM 内存中来直接访问使用**
 
+- 这块内存不受 JVM 垃圾回收的影响，因此内存地址固定，有助于 IO 读写
+- Java 中的 DirectByteBuffer 对象仅维护了此内存的虚引用，内存回收分成两步
+  - DirectByteBuffer 对象被垃圾回收，将虚引用加入引用队列
+    - 当引用的对象ByteBuffer被垃圾回收以后，虚引用对象Cleaner就会被放入引用队列中，然后调用Cleaner的clean方法来释放直接内存
+    - DirectByteBuffer 的释放底层调用的是 Unsafe 的 freeMemory 方法
+  - 通过专门线程访问引用队列，根据虚引用释放堆外内存
+- **减少了一次数据拷贝，用户态与内核态的切换次数没有减少**
 
 
 
+##### 进一步优化1
 
+**以下两种方式都是零拷贝**，即无需将数据拷贝到用户缓冲区中（JVM内存中）
 
+底层采用了 **linux 2.1** 后提供的 **sendFile** 方法，Java 中对应着两个 channel 调用 **transferTo/transferFrom** 方法拷贝数据
 
+![image-20230301144132077](./03-Netty-%E9%BB%91%E9%A9%AC.assets/image-20230301144132077.png)
 
+- Java 调用 transferTo 方法后，要从 Java 程序的**用户态**切换至**内核态**，使用 DMA将数据读入**内核缓冲区**，不会使用 CPU
+- 数据从**内核缓冲区**传输到 **socket 缓冲区**，CPU 会参与拷贝
+- 最后使用 DMA 将 **socket 缓冲区**的数据写入网卡，不会使用 CPU
 
+这种方法下
 
+- 只发生了1次用户态与内核态的切换
+- 数据拷贝了 3 次
 
 
 
+##### 进一步优化2
 
+**linux 2.4** 对上述方法再次进行了优化
 
+![img](./03-Netty-%E9%BB%91%E9%A9%AC.assets/20210418163033.png)
 
+- Java 调用 transferTo 方法后，要从 Java 程序的**用户态**切换至**内核态**，使用 DMA将数据读入**内核缓冲区**，不会使用 CPU
+- 只会将一些 offset 和 length 信息拷入 **socket 缓冲区**，几乎无消耗
+- 使用 DMA 将 **内核缓冲区**的数据写入网卡，不会使用 CPU
+- **整个过程仅只发生了1次用户态与内核态的切换，数据拷贝了 2 次**
 
 
 
+#### 5.4 AIO
 
+AIO 用来解决数据复制阶段的阻塞问题
 
+- 同步意味着，在进行读写操作时，线程需要等待结果，还是相当于闲置
+- 异步意味着，在进行读写操作时，线程不必等待结果，而是将来由操作系统来通过回调方式由另外的线程来获得结果
 
+> 异步模型需要底层操作系统（Kernel）提供支持
+>
+> - Windows 系统通过 IOCP **实现了真正的异步 IO**
+> - Linux 系统异步 IO 在 2.6 版本引入，但其**底层实现还是用多路复用模拟了异步 IO，性能没有优势**
 
 
 
+##### 文件AIO
 
+```java
+@Slf4j
+public class AioFileChannel {
+    public static void main(String[] args) {
+        try (AsynchronousFileChannel channel = AsynchronousFileChannel.open(Paths.get("data.txt"), StandardOpenOption.READ)) {
+            ByteBuffer buffer = ByteBuffer.allocate(16);
+            // 参数1 ByteBuffer
+            // 参数2 读取的起始位置
+            // 参数3 附件
+            // 参数4 回调函数
+            log.debug("read begin...");
+            channel.read(buffer, 0, buffer, new CompletionHandler<Integer, ByteBuffer>() {
+                @Override // read 成功
+                public void completed(Integer result, ByteBuffer attachment) {
+                    log.debug("read completed... {}", result);
+                    attachment.flip();
+                    debugAll(attachment);
+                }
 
+                @Override // read 失败
+                public void failed(Throwable exc, ByteBuffer attachment) {
+                    exc.printStackTrace();
+                }
+            });
+            log.debug("read end...");
+            System.in.read();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+}
+```
 
+输出
 
+```
+14:48:05 [DEBUG] [main] c.i.n.c.AioFileChannel - read begin...
+14:48:05 [DEBUG] [main] c.i.n.c.AioFileChannel - read end...
+14:48:05 [DEBUG] [Thread-8] c.i.n.c.AioFileChannel - read completed... 14
++--------+-------------------- all ------------------------+----------------+
+position: [0], limit: [14]
+         +-------------------------------------------------+
+         |  0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f |
++--------+-------------------------------------------------+----------------+
+|00000000| 31 32 33 34 35 36 37 38 39 30 61 62 63 64 00 00 |1234567890abcd..|
++--------+-------------------------------------------------+----------------+
+```
 
 
 
+##### 💡 守护线程
 
+默认文件 AIO 使用的线程都是守护线程，所以最后要执行 `System.in.read()` 以避免守护线程意外结束
 
 
 
+##### 网络AIO
 
+```java
+public class AioServer {
+    public static void main(String[] args) throws IOException {
+        AsynchronousServerSocketChannel ssc = AsynchronousServerSocketChannel.open();
+        ssc.bind(new InetSocketAddress(8080));
+        ssc.accept(null, new AcceptHandler(ssc));
+        System.in.read();
+    }
 
+    private static void closeChannel(AsynchronousSocketChannel sc) {
+        try {
+            System.out.printf("[%s] %s close\n", Thread.currentThread().getName(), sc.getRemoteAddress());
+            sc.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
 
+    private static class ReadHandler implements CompletionHandler<Integer, ByteBuffer> {
+        private final AsynchronousSocketChannel sc;
 
+        public ReadHandler(AsynchronousSocketChannel sc) {
+            this.sc = sc;
+        }
 
+        @Override
+        public void completed(Integer result, ByteBuffer attachment) {
+            try {
+                if (result == -1) {
+                    closeChannel(sc);
+                    return;
+                }
+                System.out.printf("[%s] %s read\n", Thread.currentThread().getName(), sc.getRemoteAddress());
+                attachment.flip();
+                System.out.println(Charset.defaultCharset().decode(attachment));
+                attachment.clear();
+                // 处理完第一个 read 时，需要再次调用 read 方法来处理下一个 read 事件
+                sc.read(attachment, attachment, this);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
 
+        @Override
+        public void failed(Throwable exc, ByteBuffer attachment) {
+            closeChannel(sc);
+            exc.printStackTrace();
+        }
+    }
 
+    private static class WriteHandler implements CompletionHandler<Integer, ByteBuffer> {
+        private final AsynchronousSocketChannel sc;
 
+        private WriteHandler(AsynchronousSocketChannel sc) {
+            this.sc = sc;
+        }
 
+        @Override
+        public void completed(Integer result, ByteBuffer attachment) {
+            // 如果作为附件的 buffer 还有内容，需要再次 write 写出剩余内容
+            if (attachment.hasRemaining()) {
+                sc.write(attachment);
+            }
+        }
 
+        @Override
+        public void failed(Throwable exc, ByteBuffer attachment) {
+            exc.printStackTrace();
+            closeChannel(sc);
+        }
+    }
 
+    private static class AcceptHandler implements CompletionHandler<AsynchronousSocketChannel, Object> {
+        private final AsynchronousServerSocketChannel ssc;
 
+        public AcceptHandler(AsynchronousServerSocketChannel ssc) {
+            this.ssc = ssc;
+        }
 
+        @Override
+        public void completed(AsynchronousSocketChannel sc, Object attachment) {
+            try {
+                System.out.printf("[%s] %s connected\n", Thread.currentThread().getName(), sc.getRemoteAddress());
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            ByteBuffer buffer = ByteBuffer.allocate(16);
+            // 读事件由 ReadHandler 处理
+            sc.read(buffer, buffer, new ReadHandler(sc));
+            // 写事件由 WriteHandler 处理
+            sc.write(Charset.defaultCharset().encode("server hello!"), ByteBuffer.allocate(16), new WriteHandler(sc));
+            // 处理完第一个 accpet 时，需要再次调用 accept 方法来处理下一个 accept 事件
+            ssc.accept(null, this);
+        }
 
+        @Override
+        public void failed(Throwable exc, Object attachment) {
+            exc.printStackTrace();
+        }
+    }
+}
+```
 
++++
 
+## 二、Netty入门
 
+### 1 概述
 
+#### 1.1 Netty是什么？
 
+```
+Netty is an asynchronous event-driven network application framework
+for rapid development of maintainable high performance protocol servers & clients.
+```
 
+Netty 是一个异步的、基于事件驱动的网络应用框架，用于快速开发可维护、高性能的网络服务器和客户端
 
 
 
+#### 1.2 Netty的作者
 
+![image-20230301155748203](./03-Netty-%E9%BB%91%E9%A9%AC.assets/image-20230301155748203.png)
 
+他还是另一个著名网络应用框架 Mina 的重要贡献者
 
 
 
+#### 1.3 Netty的地位
 
+Netty 在 Java 网络应用框架中的地位就好比：Spring 框架在 JavaEE 开发中的地位
 
+以下的框架都使用了 Netty，因为它们有网络通信需求！
 
+* Cassandra - nosql 数据库
+* Spark - 大数据分布式计算框架
+* Hadoop - 大数据分布式存储框架
+* RocketMQ - ali开源的消息队列
+* ElasticSearch - 搜索引擎
+* gRPC - rpc框架
+* Dubbo - rpc框架
+* Spring 5.x - flux api 完全抛弃了tomcat，使用 netty 作为服务器端
+* Zookeeper - 分布式协调框架
 
 
 
+#### 1.4 Netty的优势
 
+* 跟 Netty 相比，NIO 开发工作量大，bug 多
+  * 需要自己构建协议
+  * 解决 TCP 传输问题，如粘包、半包
+  * epoll 空轮询导致 CPU 100%
+  * Netty 对 API 进行增强，使之更易用，如 FastThreadLocal => ThreadLocal，ByteBuf => ByteBuffer
+* Netty vs 其它网络应用框架
+  * Mina 由 apache 维护，将来 3.x 版本可能会有较大重构，破坏 API 向下兼容性，Netty 的开发迭代更迅速，API 更简洁、文档更优秀
+  * 久经考验，16年，Netty 版本
+    * 2.x 2004
+    * 3.x 2008
+    * 4.x 2013
+    * 5.x 已废弃（没有明显的性能提升，维护成本高）
 
 
 
+### 2 HelloWorld
 
+#### 2.1 目标
 
+开发一个简单的服务器端和客户端
 
+* 客户端向服务器端发送 hello, world
+* 服务器仅接收，不返回
 
+加入依赖
 
+```xml
+<dependency>
+    <groupId>io.netty</groupId>
+    <artifactId>netty-all</artifactId>
+    <version>4.1.39.Final</version>
+</dependency>
+```
 
 
 
+#### 2.2 服务器端
 
+```java
+public class HelloServer {
+    public static void main(String[] args) {
+        // 启动器，负责组装netty组件，启动服务器
+        new ServerBootstrap()
+                // BossEventLoop, WorkerEventLoop(selector, thread)  group 组
+                .group(new NioEventLoopGroup())  // 1
+                // 选择服务器的 ServerSocketChannel 实现
+                .channel(NioServerSocketChannel.class) // 2
+                // boss 负责处理连接，worker(child) 负责处理读写，决定了 worker(child) 能执行哪些操作(handler)
+                // channel 代表和客户端进行数据读写的通道 Initializer 初始化，负责添加别的 handler
+                .childHandler(new ChannelInitializer<NioSocketChannel>() { // 3
+                    @Override
+                    protected void initChannel(NioSocketChannel ch) throws Exception {
+                        // 添加具体 handler
+                        ch.pipeline().addLast(new StringDecoder()); // 将 ByteBuf 转换为字符串 5
+                        ch.pipeline().addLast(new ChannelInboundHandlerAdapter() { // 自定义 handler 6
+                            @Override // 读事件
+                            public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+                                // 打印上一步转换好的字符串
+                                System.out.println(msg);
+                            }
+                        });
+                    }
+                })
+                // 绑定监听端口
+                .bind(8080); // 4
+    }
+}
+```
 
+代码解读
 
+* 1 处，创建 NioEventLoopGroup，可以简单理解为 `线程池 + Selector` 后面会详细展开
 
+* 2 处，选择服务 ServerSocketChannel 实现类，其中 NioServerSocketChannel 表示基于 NIO 的服务器端实现，其它实现还有
 
+  ![](./03-Netty-%E9%BB%91%E9%A9%AC.assets/0006.png)
 
+* 3 处，为啥方法叫 childHandler，是接下来添加的处理器都是给 SocketChannel 用的，而不是给 ServerSocketChannel。ChannelInitializer 处理器（仅执行一次），它的作用是待客户端 SocketChannel 建立连接后，执行 initChannel 以便添加更多的处理器
 
+* 4 处，ServerSocketChannel 绑定的监听端口
 
+* 5 处，SocketChannel 的处理器，解码 ByteBuf => String
 
+* 6 处，SocketChannel 的业务处理器，使用上一个处理器的处理结果
 
 
 
+#### 2.3 客户端
 
+```java
+public class HelloClient {
+    public static void main(String[] args) throws InterruptedException {
+        // 启动器类
+        new Bootstrap()
+                // 添加 EventLoop
+                .group(new NioEventLoopGroup()) // 1
+                // 选择客户端 channel 实现
+                .channel(NioSocketChannel.class) // 2
+                // 添加处理器
+                .handler(new ChannelInitializer<NioSocketChannel>() { // 3
+                    @Override // 在连接建立后被调用
+                    protected void initChannel(NioSocketChannel ch) throws Exception {
+                        ch.pipeline().addLast(new StringEncoder());  // 8
+                    }
+                })
+                // 连接服务器
+                .connect(new InetSocketAddress("localhost", 8080)) // 4
+                .sync() // 5
+                .channel() // 6
+                // 向服务器发送数据
+                .writeAndFlush("hello, world"); // 7
+    }
+}
+```
 
+代码解读
 
+* 1 处，创建 NioEventLoopGroup，同 Server
 
+* 2 处，选择客户 SocketChannel 实现类，NioSocketChannel 表示基于 NIO 的客户端实现，其它实现还有
 
+  ![](./03-Netty-%E9%BB%91%E9%A9%AC.assets/0007.png)
 
+* 3 处，添加 SocketChannel 的处理器，ChannelInitializer 处理器（仅执行一次），它的作用是待客户端 SocketChannel 建立连接后，执行 initChannel 以便添加更多的处理器
 
+* 4 处，指定要连接的服务器和端口
 
+* 5 处，Netty 中很多方法都是异步的，如 connect，这时需要使用 sync 方法等待 connect 建立连接完毕
 
+* 6 处，获取 channel 对象，它即为通道抽象，可以进行数据读写操作
 
+* 7 处，写入消息并清空缓冲区
 
+* 8 处，消息会经过通道 handler 处理，这里是将 String => ByteBuf 发出
 
+* 数据经过网络传输，到达服务器端，服务器端 5 和 6 处的 handler 先后被触发，走完一个流程
 
 
 
+#### 2.4 流程梳理
 
+![image-20230301164213459](./03-Netty-%E9%BB%91%E9%A9%AC.assets/image-20230301164213459.png)
 
+##### 💡 提示
 
+> 一开始需要树立正确的观念
+>
+> * 把 channel 理解为数据的通道
+> * 把 msg 理解为流动的数据，最开始输入是 ByteBuf，但经过 pipeline(流水线) 的加工，会变成其它类型对象，最后输出又变成 ByteBuf
+> * 把 handler 理解为数据的处理工序
+>   * 工序有多道，**合在一起就是 pipeline(传递途径)**，pipeline 负责发布事件（读、读取完成...）传播给每个 handler， handler 对自己感兴趣的事件进行处理（重写了相应事件处理方法）
+>     - pipeline 中有多个 handler，处理时会依次调用其中的 handler
+>   * handler 分 Inbound 和 Outbound 两类
+>     - Inbound 入站
+>     - Outbound 出站
+> * 把 eventLoop 理解为处理数据的工人
+>   * eventLoop 可以管理多个 channel 的 io 操作，并且一旦 eventLoop 负责了某个 channel，就**会将其与channel进行绑定**，以后该 channel 中的 io 操作都由该 eventLoop 负责
+>   * eventLoop 既可以执行 io 操作，**也可以进行任务处理**，每个 eventLoop 有自己的任务队列，队列里可以堆放多个 channel 的待处理任务，任务分为普通任务、定时任务
+>   * eventLoop 按照 pipeline 顺序，依次按照 handler 的规划（代码）处理数据，可以为每个 handler 指定不同的 eventLoop
 
 
 
+### 3 组件
 
+#### 3.1 EventLoop
 
+**事件循环对象** EventLoop
 
+EventLoop 本质是一个**单线程执行器**（同时**维护了一个 Selector**），里面有 run 方法处理一个或多个 Channel 上源源不断的 io 事件
 
+它的继承关系如下
+
+- 继承自 j.u.c.ScheduledExecutorService 因此包含了线程池中所有的方法
+- 继承自 netty 自己的 OrderedEventExecutor
+  - 提供了 `boolean inEventLoop(Thread thread)` 方法判断一个线程是否属于此 EventLoop
+  - 提供了 `EventLoopGroup parent()` 方法来看看自己属于哪个 EventLoopGroup
+
+**事件循环组** EventLoopGroup
+
+EventLoopGroup 是一组 EventLoop，Channel 一般会调用 EventLoopGroup 的 register 方法来绑定其中一个 EventLoop，后续这个 Channel 上的 io 事件都由此 EventLoop 来处理（保证了 io 事件处理时的线程安全）
+
+- 继承自 netty 自己的 EventExecutorGroup
+  - 实现了 Iterable 接口提供遍历 EventLoop 的能力
+  - 另有 `next` 方法获取集合中下一个 EventLoop
+
+以一个简单的实现为例：
+
+```java
+// 内部创建了两个 EventLoop, 每个 EventLoop 维护一个线程
+EventLoopGroup group = new NioEventLoopGroup(2);
+
+System.out.println(group.next());
+System.out.println(group.next());
+System.out.println(group.next());
+System.out.println(group.next());
+System.out.println(group.next());
+```
+
+输出
+
+```
+io.netty.channel.nio.NioEventLoop@5f2108b5
+io.netty.channel.nio.NioEventLoop@31a5c39e
+io.netty.channel.nio.NioEventLoop@5f2108b5
+io.netty.channel.nio.NioEventLoop@31a5c39e
+io.netty.channel.nio.NioEventLoop@5f2108b5
+```
+
+也可以使用 for 循环
+
+```java
+DefaultEventLoopGroup group = new DefaultEventLoopGroup(2);
+for (EventExecutor eventLoop : group) {
+    System.out.println(eventLoop);
+}
+```
+
+输出
+
+```
+io.netty.channel.nio.NioEventLoop@5f2108b5
+io.netty.channel.nio.NioEventLoop@31a5c39e
+```
+
+
+
+##### 演示普通与定时任务
+
+```java
+@Slf4j
+public class TestEventLoop {
+    public static void main(String[] args) {
+        // 1. 创建事件循环组
+        EventLoopGroup group = new NioEventLoopGroup(2); // io事件、普通任务、定时任务
+        //EventLoopGroup group = new DefaultEventLoopGroup(); // 普通任务、定时任务
+
+        // 2. 获取下一个事件循环对象
+        System.out.println(group.next());
+        System.out.println(group.next());
+        System.out.println(group.next());
+        System.out.println(group.next());
+        System.out.println(group.next());
+
+        // 3. 执行普通任务  可以用来执行耗时较长的任务
+        group.next().submit(() -> {
+            sleep(1, TimeUnit.SECONDS); // 睡眠1秒
+            log.debug("ok");
+        });
+
+        // 4. 执行定时任务 3秒之后执行，每1秒执行一次  可以用来执行定时任务
+        group.next().scheduleAtFixedRate(() -> {
+            log.debug("ok schedule");
+        }, 3, 1, TimeUnit.SECONDS);
+
+        log.debug("main");
+    }
+
+    private static void sleep(int n, TimeUnit unit) {
+        try {
+            unit.sleep(n);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+    }
+}
+```
+
+输出结果如下
+
+```
+io.netty.channel.nio.NioEventLoop@5f2108b5
+io.netty.channel.nio.NioEventLoop@31a5c39e
+io.netty.channel.nio.NioEventLoop@5f2108b5
+io.netty.channel.nio.NioEventLoop@31a5c39e
+io.netty.channel.nio.NioEventLoop@5f2108b5
+20:26:16 [DEBUG] [main] c.i.n.c.TestEventLoop - main
+20:26:17 [DEBUG] [nioEventLoopGroup-2-1] c.i.n.c.TestEventLoop - ok
+20:26:19 [DEBUG] [nioEventLoopGroup-2-2] c.i.n.c.TestEventLoop - ok schedule
+20:26:20 [DEBUG] [nioEventLoopGroup-2-2] c.i.n.c.TestEventLoop - ok schedule
+20:26:21 [DEBUG] [nioEventLoopGroup-2-2] c.i.n.c.TestEventLoop - ok schedule
+20:26:22 [DEBUG] [nioEventLoopGroup-2-2] c.i.n.c.TestEventLoop - ok schedule
+...
+```
+
+
+
+##### 💡 关闭EventLoopGroup
+
+优雅关闭 `shutdownGracefully` 方法。该方法会首先切换 `EventLoopGroup` 到关闭状态从而拒绝新的任务的加入，然后在任务队列的任务都处理完成后，停止线程的运行。从而确保整体应用是在正常有序的状态下退出的
+
+
+
+##### 处理IO任务
+
+**服务器代码**：
+
+```java
+public class MyServer {
+    public static void main(String[] args) {
+        new ServerBootstrap()
+                .group(new NioEventLoopGroup())
+                .channel(NioServerSocketChannel.class)
+                .childHandler(new ChannelInitializer<SocketChannel>() {
+                    @Override
+                    protected void initChannel(SocketChannel socketChannel) throws Exception {
+                        socketChannel.pipeline().addLast(new ChannelInboundHandlerAdapter() {
+                            @Override
+                            public void channelRead(ChannelHandlerContext ctx, Object msg) 
+                                throws Exception {
+                                ByteBuf buf = (ByteBuf) msg;
+                                System.out.println(Thread.currentThread().getName() + " " 
+                                                   + buf.toString(StandardCharsets.UTF_8));
+                            }
+                        });
+                    }
+                })
+                .bind(8080);
+    }
+}
+```
+
+**客户端代码**：
+
+```java
+public class MyClient {
+    public static void main(String[] args) throws IOException, InterruptedException {
+        Channel channel = new Bootstrap()
+                .group(new NioEventLoopGroup())
+                .channel(NioSocketChannel.class)
+                .handler(new ChannelInitializer<SocketChannel>() {
+                    @Override
+                    protected void initChannel(SocketChannel socketChannel) throws Exception {
+                        socketChannel.pipeline().addLast(new StringEncoder());
+                    }
+                })
+                .connect(new InetSocketAddress("localhost", 8080))
+                .sync()
+                .channel();
+        System.out.println(channel);
+        // 此处打断点调试，调用 channel.writeAndFlush(...);
+        System.in.read();
+    }
+}
+```
+
+
+
+##### 💡 分工
+
+Bootstrap的group()方法**可以传入两个EventLoopGroup参数**，分别负责处理不同的事件
+
+```java
+public class MyServer {
+    public static void main(String[] args) {
+        new ServerBootstrap()
+            	// 细分1
+                // boss(第一个参数) 和 worker(第二个参数)
+                // boss 只负责 accept 事件
+                // worker 只负责 socketChannel 上的读写
+                .group(new NioEventLoopGroup(1), new NioEventLoopGroup(2))
+            
+				...
+    }
+}
+```
+
+三个客户端分别依次发送`one`、`two`、`three`； 
+
+结果
+
+```
+20:36:09 [DEBUG] [nioEventLoopGroup-4-1] c.i.n.c.EventLoopServer - one
+20:36:20 [DEBUG] [nioEventLoopGroup-4-2] c.i.n.c.EventLoopServer - two
+20:36:33 [DEBUG] [nioEventLoopGroup-4-1] c.i.n.c.EventLoopServer - three
+20:36:54 [DEBUG] [nioEventLoopGroup-4-1] c.i.n.c.EventLoopServer - three
+20:36:56 [DEBUG] [nioEventLoopGroup-4-2] c.i.n.c.EventLoopServer - two
+20:36:59 [DEBUG] [nioEventLoopGroup-4-1] c.i.n.c.EventLoopServer - one
+20:37:03 [DEBUG] [nioEventLoopGroup-4-2] c.i.n.c.EventLoopServer - two
+```
+
+可以看出，一个EventLoop可以**负责多个**Channel，且EventLoop一旦与Channel绑定，则**一直负责**处理该Channel中的事件
+
+![img](./03-Netty-%E9%BB%91%E9%A9%AC.assets/20210421103251.png)
+
+
+
+*增加自定义EventLoopGroup*：
+
+当有的**任务需要较长的时间处理时，可以使用非NioEventLoopGroup**，避免同一个NioEventLoop中的其他Channel在较长的时间内都无法得到处理
+
+```java
+@Slf4j
+public class EventLoopServer {
+    public static void main(String[] args) {
+        // 细分2
+        // 创建一个独立的 EventLoopGroup
+        EventLoopGroup group = new DefaultEventLoopGroup();
+        new ServerBootstrap()
+                // 细分1
+                // boss(第一个参数) 和 worker(第二个参数)
+                // boss 只负责 accept 事件
+                // worker 只负责 socketChannel 上的读写
+                .group(new NioEventLoopGroup(), new NioEventLoopGroup(2))
+                .channel(NioServerSocketChannel.class)
+                .childHandler(new ChannelInitializer<NioSocketChannel>() {
+                    @Override
+                    protected void initChannel(NioSocketChannel ch) throws Exception {
+                        ch.pipeline().addLast("handler1", new ChannelInboundHandlerAdapter() {
+                            @Override
+                            public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+                                ByteBuf buf = (ByteBuf) msg;
+                                log.debug(buf.toString(Charset.defaultCharset()));
+                                ctx.fireChannelRead(msg); // 将消息传递给下一个handler
+                            }
+                        })
+                        // 该handler绑定自定义的Group
+                        .addLast(group, "handler2", new ChannelInboundHandlerAdapter() {
+                            @Override
+                            public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+                                ByteBuf buf = (ByteBuf) msg;
+                                log.debug(buf.toString(Charset.defaultCharset()));
+                            }
+                        });
+                    }
+                })
+                .bind(8080);
+    }
+}
+```
+
+启动四个客户端发送数据
+
+```
+20:45:20 [DEBUG] [nioEventLoopGroup-4-1] c.i.n.c.EventLoopServer - hello1
+20:45:20 [DEBUG] [defaultEventLoopGroup-2-1] c.i.n.c.EventLoopServer - hello1
+20:45:33 [DEBUG] [nioEventLoopGroup-4-2] c.i.n.c.EventLoopServer - hello2
+20:45:33 [DEBUG] [defaultEventLoopGroup-2-2] c.i.n.c.EventLoopServer - hello2
+20:45:43 [DEBUG] [nioEventLoopGroup-4-1] c.i.n.c.EventLoopServer - hello3
+20:45:43 [DEBUG] [defaultEventLoopGroup-2-3] c.i.n.c.EventLoopServer - hello3
+20:45:53 [DEBUG] [nioEventLoopGroup-4-2] c.i.n.c.EventLoopServer - hello4
+20:45:53 [DEBUG] [defaultEventLoopGroup-2-4] c.i.n.c.EventLoopServer - hello4
+```
+
+可以看出，客户端与服务器之间的事件，被nioEventLoopGroup和defaultEventLoopGroup分别处理
+
+![img](./03-Netty-%E9%BB%91%E9%A9%AC.assets/20210421103607.png)
+
+
+
+##### 💡 切换线程的实现
+
+**不同的EventLoopGroup切换的实现原理如下**
+
+由上面的图可以看出，当handler中绑定的Group不同时，需要切换Group来执行不同的任务
+
+```java
+static void invokeChannelRead(final AbstractChannelHandlerContext next, Object msg) {
+    final Object m = next.pipeline.touch(ObjectUtil.checkNotNull(msg, "msg"), next);
+    // 获得下一个EventLoop, excutor 即为 EventLoopGroup
+    EventExecutor executor = next.executor();
+    
+    // 如果下一个EventLoop 在当前的 EventLoopGroup中
+    if (executor.inEventLoop()) {
+        // 使用当前 EventLoopGroup 中的 EventLoop 来处理任务
+        next.invokeChannelRead(m);
+    } else {
+        // 否则让另一个 EventLoopGroup 中的 EventLoop 来创建任务并执行
+        executor.execute(new Runnable() {
+            public void run() {
+                next.invokeChannelRead(m);
+            }
+        });
+    }
+}
+```
+
+- 如果两个 handler 绑定的是**同一个EventLoopGroup**，那么就直接调用
+- 否则，把要调用的代码封装为一个任务对象，由下一个 handler 的 EventLoopGroup 来调用
+
+
+
+#### 3.2 Channel
+
+channel 的主要作用
+
+* close() 可以用来关闭 channel
+* closeFuture() 用来处理 channel 的关闭
+  * sync 方法作用是同步等待 channel 关闭
+  * 而 addListener 方法是异步等待 channel 关闭
+* pipeline() 方法添加处理器
+* write() 方法将数据写入
+* writeAndFlush() 方法将数据写入并刷出
 
 
 
