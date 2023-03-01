@@ -2561,7 +2561,7 @@ public class HelloServer {
 
   ![](./03-Netty-%E9%BB%91%E9%A9%AC.assets/0006.png)
 
-* 3 处，为啥方法叫 childHandler，是接下来添加的处理器都是给 SocketChannel 用的，而不是给 ServerSocketChannel。ChannelInitializer 处理器（仅执行一次），它的作用是待客户端 SocketChannel 建立连接后，执行 initChannel 以便添加更多的处理器
+* 3 处，为啥方法叫 childHandler，是接下来添加的处理器都是给 SocketChannel 用的，而不是给 ServerSocketChannel。ChannelInitializer 处理器（仅执行一次)，它的作用是待客户端 SocketChannel 建立连接后，执行 initChannel 以便添加更多的处理器
 
 * 4 处，ServerSocketChannel 绑定的监听端口
 
