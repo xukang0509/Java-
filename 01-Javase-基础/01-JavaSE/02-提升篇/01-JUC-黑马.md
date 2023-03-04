@@ -13,7 +13,7 @@
 - 采用了 lombok 简化 java bean 编写
 - 给每个线程好名字，这也是一项好的实践
 
-![img](./01-JUC-%E9%BB%91%E9%A9%AC.assets/0-00000005.png)
+<img src="./01-JUC-%E9%BB%91%E9%A9%AC.assets/0-00000005.png" alt="img" style="zoom:70%;" align="left" />
 
 ## 一、进程与线程
 
