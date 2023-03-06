@@ -1062,7 +1062,7 @@ d:\data\projects\b
 
 #### 4.1 非阻塞VS阻塞
 
-##### 4.1.1 堵塞
+##### 堵塞
 
 * 阻塞模式下，相关方法都会导致线程暂停
   * ServerSocketChannel.accept 会在**没有连接建立时**让线程暂停
@@ -1139,7 +1139,7 @@ public class Client {
 
 
 
-##### 4.1.2 非阻塞
+##### 非阻塞
 
 * 非阻塞模式下，相关方法都会不会让线程暂停
   * 在 ServerSocketChannel.accept 在没有连接建立时，会返回 null，继续运行
@@ -1189,7 +1189,7 @@ public class Server {
 
 
 
-##### 4.1.3 多路复用
+##### 多路复用
 
 单线程可以配合 Selector 完成对多个 Channel 可读写事件的监控，这称之为多路复用
 
@@ -1225,7 +1225,7 @@ end
 
 
 
-##### 4.2.1 创建Selector
+##### 创建Selector
 
 ```java
 Selector selector = Selector.open();
@@ -1233,7 +1233,7 @@ Selector selector = Selector.open();
 
 
 
-##### 4.2.2 绑定 Channel 事件
+##### 绑定 Channel 事件
 
 也称之为注册事件，绑定的事件 selector 才会关心
 
@@ -1252,7 +1252,7 @@ SelectionKey key = channel.register(selector, 绑定事件);
 
 
 
-##### 4.2.3 监听Channel事件
+##### 监听Channel事件
 
 可以通过下面三种方法来监听是否有事件发生，方法的返回值代表有多少 channel 发生了事件
 
@@ -6204,6 +6204,7 @@ channel2.pipeline().addLast(loggingHandler);
 继承**MessageToMessageDecoder**即可。**该类的目标是：将已经被处理的完整数据再次被处理。**传过来的Message**如果是被处理过的完整数据**，那么被共享也就不会出现问题了，也就可以使用@Sharable注解了。实现方式与ByteToMessageCodec类似
 
 ```java
+// 必须和 LengthFieldBasedFrameDecoder 一起使用，确保接到的 ByteBuf 消息是完整的
 @ChannelHandler.Sharable
 public class MessageSharableCodec extends MessageToMessageCodec<ByteBuf, Message> {
     @Override
@@ -6222,21 +6223,132 @@ public class MessageSharableCodec extends MessageToMessageCodec<ByteBuf, Message
 
 ### 3 在线聊天室
 
+#### 3.1 聊天室业务
+
+##### 用户登录接口
+
+```JAva
+public interface UserService {
+    /**
+     * 登录
+     * @param username 用户名
+     * @param password 密码
+     * @return 登录成功返回 true, 否则返回 false
+     */
+    boolean login(String username, String password);
+}
+```
+
+
+
+##### 用户会话接口
+
+```java
+public interface Session {
+
+    /**
+     * 绑定会话
+     * @param channel 哪个 channel 要绑定会话
+     * @param username 会话绑定用户
+     */
+    void bind(Channel channel, String username);
+
+    /**
+     * 解绑会话
+     * @param channel 哪个 channel 要解绑会话
+     */
+    void unbind(Channel channel);
+
+    /**
+     * 获取属性
+     * @param channel 哪个 channel
+     * @param name 属性名
+     * @return 属性值
+     */
+    Object getAttribute(Channel channel, String name);
 
+    /**
+     * 设置属性
+     * @param channel 哪个 channel
+     * @param name 属性名
+     * @param value 属性值
+     */
+    void setAttribute(Channel channel, String name, Object value);
 
+    /**
+     * 根据用户名获取 channel
+     * @param username 用户名
+     * @return channel
+     */
+    Channel getChannel(String username);
+}
+```
 
 
 
+##### 群聊会话接口
 
+```java
+public interface GroupSession {
+    /**
+     * 创建一个聊天组, 如果不存在才能创建成功, 否则返回 null
+     * @param name 组名
+     * @param members 成员
+     * @return 成功时返回组对象, 失败返回 null
+     */
+    Group createGroup(String name, Set<String> members);
 
+    /**
+     * 加入聊天组
+     * @param name 组名
+     * @param member 成员名
+     * @return 如果组不存在返回 null, 否则返回组对象
+     */
+    Group joinMember(String name, String member);
 
+    /**
+     * 移除组成员
+     * @param name 组名
+     * @param member 成员名
+     * @return 如果组不存在返回 null, 否则返回组对象
+     */
+    Group removeMember(String name, String member);
 
+    /**
+     * 移除聊天组
+     * @param name 组名
+     * @return 如果组不存在返回 null, 否则返回组对象
+     */
+    Group removeGroup(String name);
 
+    /**
+     * 获取组成员
+     * @param name 组名
+     * @return 成员集合, 如果群不存在或没有成员会返回 empty set
+     */
+    Set<String> getMembers(String name);
 
+    /**
+     * 获取组成员的 channel 集合, 只有在线的 channel 才会返回
+     * @param name 组名
+     * @return 成员 channel 集合
+     */
+    List<Channel> getMembersChannel(String name);
+    
+    /**
+     * 判断群聊是否一被创建
+     * @param name 群聊名称
+     * @return 是否存在
+     */
+    boolean isCreated(String name);
+}
+```
 
 
 
+##### 整体架构
 
+<img src="./03-Netty-%E9%BB%91%E9%A9%AC.assets/20210428154749.png" alt="img" align="left" /><img src="./03-Netty-%E9%BB%91%E9%A9%AC.assets/20210428154801.png" alt="img" align="left" />
 
 
 
@@ -6278,57 +6390,558 @@ public class MessageSharableCodec extends MessageToMessageCodec<ByteBuf, Message
 
 
 
+- client包：存放客户端相关类
+- message包：存放各种类型的消息
+- protocol包：存放自定义协议
+- server包：存放服务器相关类
+  - service包：存放用户相关类
+  - session包：单聊及群聊相关会话类
 
 
 
+##### 客户端代码结构
 
+```java
+public class ChatClient {
+    static final Logger log = LoggerFactory.getLogger(ChatClient.class);
+    public static void main(String[] args) {
+        NioEventLoopGroup group = new NioEventLoopGroup();
+        LoggingHandler loggingHandler = new LoggingHandler(LogLevel.DEBUG);
+        MessageSharableCodec messageSharableCodec = new MessageSharableCodec();
+        try {
+            Bootstrap bootstrap = new Bootstrap();
+            bootstrap.group(group);
+            bootstrap.channel(NioSocketChannel.class);
+            bootstrap.handler(new ChannelInitializer<SocketChannel>() {
+                @Override
+                protected void initChannel(SocketChannel ch) throws Exception {
+                    // LengthFieldBasedFrameDecoder(1024, 12, 4, 0, 0)
+                    ch.pipeline().addLast(new ProtocolFrameDecoder());
+                    ch.pipeline().addLast(loggingHandler);
+                    ch.pipeline().addLast(messageSharableCodec);
+                }
+            });
+            Channel channel = bootstrap.connect().sync().channel();
+            channel.closeFuture().sync();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        } finally {
+           group.shutdownGracefully();
+        }
+    }
+}
+```
 
 
 
+##### 服务端代码结构
 
+```java
+public class ChatServer {
+    static final Logger log = LoggerFactory.getLogger(ChatServer.class);
+    public static void main(String[] args) {
+        NioEventLoopGroup boss = new NioEventLoopGroup();
+        NioEventLoopGroup worker = new NioEventLoopGroup();
+        LoggingHandler loggingHandler = new LoggingHandler(LogLevel.DEBUG);
+        MessageSharableCodec messageSharableCodec = new MessageSharableCodec();
+        try {
+            ServerBootstrap bootstrap = new ServerBootstrap();
+            bootstrap.group(boss, worker);
+            bootstrap.channel(NioServerSocketChannel.class);
+            bootstrap.childHandler(new ChannelInitializer<SocketChannel>() {
+                @Override
+                protected void initChannel(SocketChannel ch) throws Exception {
+                    // LengthFieldBasedFrameDecoder(1024, 12, 4, 0, 0)
+                    ch.pipeline().addLast(new ProtocolFrameDecoder());
+                    ch.pipeline().addLast(loggingHandler);
+                    ch.pipeline().addLast(messageSharableCodec);
+                }
+            });
+            Channel channel = bootstrap.bind(8080).sync().channel();
+            channel.closeFuture().sync();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        } finally {
+            boss.shutdownGracefully();
+            worker.shutdownGracefully();
+        }
+    }
+}
+```
 
 
 
+#### 3.2 登录
 
+##### 客户端代码
 
+客户端添加如下handler，**分别处理登录、聊天等操作**。
 
+```java
+CountDownLatch WAIT_FOR_LOGIN = new CountDownLatch(1);
+AtomicBoolean LOGIN = new AtomicBoolean(false);
 
+ch.pipeline().addLast("Client Handler", new ChannelInboundHandlerAdapter() {
+    // 接收响应消息
+    @Override
+    public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+        log.debug("msg: {}", msg);
+        if (msg instanceof LoginResponseMessage) {
+            LoginResponseMessage response = (LoginResponseMessage) msg;
+            LOGIN.set(response.isSuccess());
+            WAIT_FOR_LOGIN.countDown(); // 唤醒 system in 线程
+        }
+    }
 
+    // 在连接建立后触发 active 事件
+    @Override
+    public void channelActive(ChannelHandlerContext ctx) throws Exception {
+        // 负责接收用户在控制台的输入，负责向服务器发送各种请求
+        new Thread(() -> {
+            Scanner scanner = new Scanner(System.in);
+            System.out.print("请输入用户名：");
+            String username = scanner.nextLine();
+            System.out.print("请输入密码：");
+            String password = scanner.nextLine();
+            // 构造消息对象
+            LoginRequestMessage message = new LoginRequestMessage(username, password);
+            // 发送消息
+            ctx.writeAndFlush(message);
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+            System.out.println("等待后续操作...");
+            try {
+                WAIT_FOR_LOGIN.await();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            // 如果登录失败
+            if (!LOGIN.get()) {
+                ctx.channel().close();
+                return;
+            }
+            while (true) {
+                System.out.println("============================================");
+                System.out.println("send [username] [content]");
+                System.out.println("gsend [group name] [content]");
+                System.out.println("gcreate [group name] [m1,m2,m3,m4...]");
+                System.out.println("gmembers [group name]");
+                System.out.println("gjoin [group name]");
+                System.out.println("gquit [group name]");
+                System.out.println("quit");
+                System.out.println("============================================");
+                System.out.print("please input command: ");
+                String command = scanner.nextLine();
+                String[] s = command.split(" ");
+                switch (s[0]) {
+                    case "send":
+                        ctx.writeAndFlush(new ChatRequestMessage(username, s[1], s[2]));
+                        break;
+                    case "gsend":
+                        ctx.writeAndFlush(new GroupChatRequestMessage(username, s[1], s[2]));
+                        break;
+                    case "gcreate":
+                        Set<String> set = new HashSet<>(Arrays.asList(s[2].split(",")));
+                        set.add(username); // 加入自己
+                        ctx.writeAndFlush(new GroupCreateRequestMessage(s[1], set));
+                        break;
+                    case "gmembers":
+                        ctx.writeAndFlush(new GroupMembersRequestMessage(s[1]));
+                        break;
+                    case "gjoin":
+                        ctx.writeAndFlush(new GroupJoinRequestMessage(username, s[1]));
+                        break;
+                    case "gquit":
+                        ctx.writeAndFlush(new GroupQuitRequestMessage(username, s[1]));
+                        break;
+                    case "quit":
+                        ctx.channel().close();
+                        return;
+                }
+            }
+        }, "system in").start();
+    }
+});
+```
+
+
+
+##### 服务端代码
+
+服务器添加如下handler，并添加到对应的channel中，**负责处理登录请求信息，并作出响应**
+
+```java
+@ChannelHandler.Sharable // 必须添加该注解
+public class LoginRequestMessageHandler extends SimpleChannelInboundHandler<LoginRequestMessage> {
+    @Override
+    protected void channelRead0(ChannelHandlerContext ctx, LoginRequestMessage msg) throws Exception {
+        String username = msg.getUsername();
+        String password = msg.getPassword();
+        // 校验登录信息
+        boolean login = UserServiceFactory.getUserService().login(username, password);
+        LoginResponseMessage responseMessage;
+        if (login) {
+            // 绑定channel与user
+            SessionFactory.getSession().bind(ctx.channel(), username);
+            responseMessage = new LoginResponseMessage(true, "登录成功");
+        } else {
+            responseMessage = new LoginResponseMessage(false, "用户名或密码不正确");
+        }
+        ctx.writeAndFlush(responseMessage);
+    }
+}
+```
+
+```java
+// 该handler处理登录请求
+LoginRequestMessageHandler LOGIN_HANDLER = new LoginRequestMessageHandler();
+ch.pipeline().addLast(LOGIN_HANDLER);
+```
+
+
+
+#### 3.3 单聊
+
+客户端输入`send username content`即可发送单聊消息，需要**服务器端添加处理ChatRequestMessage的handler**
+
+```java
+@ChannelHandler.Sharable
+public class ChatRequestMessageHandler extends SimpleChannelInboundHandler<ChatRequestMessage> {
+    @Override
+    protected void channelRead0(ChannelHandlerContext ctx, ChatRequestMessage msg) throws Exception {
+        String to = msg.getTo();
+        Channel channel = SessionFactory.getSession().getChannel(to);
+        if (channel != null) {
+            // 在线
+            channel.writeAndFlush(new ChatResponseMessage(msg.getFrom(), msg.getContent()));
+        } else {
+            // 不在线
+            ctx.writeAndFlush(new ChatResponseMessage(false, "对方用户不存在或者不在线"));
+        }
+    }
+}
+```
+
+```java
+// 该handler处理单聊请求
+ChatRequestMessageHandler CHAT_HANDLER = new ChatRequestMessageHandler();
+ch.pipeline().addLast(CHAT_HANDLER);
+```
+
+
+
+#### 3.4 群聊
+
+##### 创建群聊
+
+客户端输入`gcreate groupName members`即可创建群聊，并拉人，服务端添加处理`GroupCreateRequestMessage`的handler
+
+```java
+@ChannelHandler.Sharable
+public class GroupCreateRequestMessageHandler extends SimpleChannelInboundHandler<GroupCreateRequestMessage> {
+    @Override
+    protected void channelRead0(ChannelHandlerContext ctx, GroupCreateRequestMessage msg) throws Exception {
+        String groupName = msg.getGroupName();
+        Set<String> members = msg.getMembers();
+        // 群管理器
+        GroupSession groupSession = GroupSessionFactory.getGroupSession();
+        // 判断该群聊是否创建过，未创建返回null并创建群聊
+        Group group = groupSession.createGroup(groupName, members);
+        if (group == null) {
+            // 发送成功消息
+            ctx.writeAndFlush(new GroupCreateResponseMessage(true, groupName + "创建成功"));
+            // 发送拉群消息
+            List<Channel> channels = groupSession.getMembersChannel(groupName);
+            for (Channel channel : channels) {
+                channel.writeAndFlush(new GroupCreateResponseMessage(true, "您已被拉入" + groupName));
+            }
+        } else {
+            ctx.writeAndFlush(new GroupCreateResponseMessage(false, groupName + "已经存在"));
+        }
+    }
+}
+```
+
+```java
+// 该handler处理创建群聊请求
+GroupCreateRequestMessageHandler GROUP_CREATE_HANDLER = new GroupCreateRequestMessageHandler();
+ch.pipeline().addLast(GROUP_CREATE_HANDLER);
+```
+
+
+
+##### 群聊聊天
+
+客户端输入`gsend groupName content`即可群聊聊天，服务端添加处理`GroupChatRequestMessage`的handler
+
+```java
+@ChannelHandler.Sharable
+public class GroupChatRequestMessageHandler extends SimpleChannelInboundHandler<GroupChatRequestMessage> {
+    @Override
+    protected void channelRead0(ChannelHandlerContext ctx, GroupChatRequestMessage msg) throws Exception {
+        String groupName = msg.getGroupName();
+        GroupSession groupSession = GroupSessionFactory.getGroupSession();
+        // 判断群聊是否存在
+        boolean isCreated = groupSession.isCreated(groupName);
+        if (isCreated) {
+            // 给群员发送信息
+            List<Channel> membersChannel = groupSession.getMembersChannel(groupName);
+            for(Channel channel : membersChannel) {
+                channel.writeAndFlush(new GroupChatResponseMessage(msg.getFrom(), msg.getContent()));
+            }
+        } else {
+            ctx.writeAndFlush(new GroupChatResponseMessage(false, "群聊不存在"));
+        }
+    }
+}
+```
+
+```java
+// 该handler处理群聊聊天
+GroupChatRequestMessageHandler GROUP_CHAT_HANDLER = new GroupChatRequestMessageHandler();
+ch.pipeline().addLast(GROUP_CHAT_HANDLER);
+```
+
+
+
+##### 群聊加入
+
+客户端输入`gjoin groupName`即加入该群，服务端添加处理`GroupJoinRequestMessage`的handler
+
+```java
+@ChannelHandler.Sharable
+public class GroupJoinRequestMessageHandler extends SimpleChannelInboundHandler<GroupJoinRequestMessage> {
+    @Override
+    protected void channelRead0(ChannelHandlerContext ctx, GroupJoinRequestMessage msg) throws Exception {
+        GroupSession groupSession = GroupSessionFactory.getGroupSession();
+        // 判断该用户是否在群聊中
+        Set<String> members = groupSession.getMembers(msg.getGroupName());
+        boolean joinFlag = false;
+        // 群聊存在且用户未加入，才能加入
+        if (!members.contains(msg.getUsername()) && groupSession.isCreated(msg.getGroupName())) {
+            joinFlag = true;
+        }
+
+        if (joinFlag) {
+            // 加入群聊
+            groupSession.joinMember(msg.getGroupName(), msg.getUsername());
+            ctx.writeAndFlush(new GroupJoinResponseMessage(true,"加入"+msg.getGroupName()+"成功"));
+        } else {
+            ctx.writeAndFlush(new GroupJoinResponseMessage(false, "加入失败，群聊未存在或您已加入该群聊"));
+        }
+    }
+}
+```
+
+```java
+// 该handler处理加入群聊
+GroupJoinRequestMessageHandler GROUP_JOIN_HANDLER = new GroupJoinRequestMessageHandler();
+ch.pipeline().addLast(GROUP_JOIN_HANDLER);
+```
+
+
+
+##### 退出群聊
+
+客户端输入`gquit groupName`即退出该群，服务端添加处理`GroupQuitRequestMessage`的handler
+
+```java
+@ChannelHandler.Sharable
+public class GroupQuitRequestMessageHandler extends SimpleChannelInboundHandler<GroupQuitRequestMessage> {
+    @Override
+    protected void channelRead0(ChannelHandlerContext ctx, GroupQuitRequestMessage msg) throws Exception {
+        GroupSession groupSession = GroupSessionFactory.getGroupSession();
+        String groupName = msg.getGroupName();
+        Set<String> members = groupSession.getMembers(groupName);
+        String username = msg.getUsername();
+        // 判断用户是否在群聊中以及群聊是否存在
+        boolean joinFlag = false;
+        if (groupSession.isCreated(groupName) && members.contains(username)) {
+            // 可以退出
+            joinFlag = true;
+        }
+
+        if (joinFlag) {
+            // 退出成功
+            groupSession.removeMember(groupName, username);
+            ctx.writeAndFlush(new GroupQuitResponseMessage(true, "退出"+groupName+"成功"));
+        } else {
+            // 退出失败
+            ctx.writeAndFlush(new GroupQuitResponseMessage(false, "群聊不存在或您未加入该群，退出"+groupName+"失败"));
+        }
+    }
+}
+```
+
+```java
+GroupQuitRequestMessageHandler GROUP_QUIT_HANDLER = new GroupQuitRequestMessageHandler();
+ch.pipeline().addLast(GROUP_QUIT_HANDLER);
+```
+
+
+
+##### 查看群聊成员
+
+客户端输入`gmembers groupName`即可查询该群的所有成员，服务端添加处理`GroupQuitRequestMessage`的handler
+
+```java
+@ChannelHandler.Sharable
+public class GroupMembersRequestMessageHandler extends SimpleChannelInboundHandler<GroupMembersRequestMessage> {
+    @Override
+    protected void channelRead0(ChannelHandlerContext ctx, GroupMembersRequestMessage msg) throws Exception {
+        Set<String> members = GroupSessionFactory.getGroupSession().getMembers(msg.getGroupName());
+        ctx.channel().writeAndFlush(new GroupMembersResponseMessage(members));
+    }
+}
+```
+
+```java
+GroupMembersRequestMessageHandler GROUP_MEMBERS_HANDLER = new GroupMembersRequestMessageHandler();
+ch.pipeline().addLast(GROUP_MEMBERS_HANDLER);
+```
+
+
+
+#### 3.5 退出聊天室
+
+客户端输入`quit`即可退出聊天室，服务端添加处理退出聊天室的handler
+
+```java
+@Slf4j
+@ChannelHandler.Sharable
+public class QuitHandler extends ChannelInboundHandlerAdapter {
+    // 连接断开时触发 inactive 事件
+    @Override
+    public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+        SessionFactory.getSession().unbind(ctx.channel());
+        log.debug("{} 已经断开", ctx.channel());
+    }
+
+    // 异常退出，需要解绑
+    @Override
+    public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
+        SessionFactory.getSession().unbind(ctx.channel());
+        log.debug("{} 异常断开，异常信息：{}", ctx.channel(), cause.getMessage());
+    }
+}
+```
+
+```java
+QuitHandler QUIT_HANDLER = new QuitHandler();
+ch.pipeline().addLast(QUIT_HANDLER);
+```
+
+**退出时，客户端会关闭channel并返回**
+
+```java
+case "quit":
+	// 关闭channel并返回
+    ctx.channel().close();
+    return;
+```
+
+
+
+#### 3.6 空闲检测
+
+##### 连接假死
+
+**原因**
+
+- 网络设备出现故障，例如网卡，机房等，底层的 TCP 连接已经断开了，**但应用程序没有感知到**，仍然占用着资源
+- 公网网络不稳定，出现丢包。如果连续出现丢包，这时现象就是客户端数据发不出去，服务端也一直收不到数据，会白白地消耗资源
+- 应用程序线程阻塞，无法进行数据读写
+
+**问题**
+
+- 假死的连接占用的资源不能自动释放
+- 向假死的连接发送数据，得到的反馈是发送超时
+
+
+
+##### 解决方案
+
+可以添加`IdleStateHandler`对空闲时间进行检测，通过构造函数可以传入四个参数
+
+- readerIdleTimeSeconds 读空闲经过的秒数
+- writerIdleTimeSeconds 写空闲经过的秒数
+- allIdleTimeSeconds 读和写空闲经过的秒数
+- timeUnit 时间单位
+
+当指定时间内未发生读或写事件时，**会触发特定事件**
+
+<img src="./03-Netty-%E9%BB%91%E9%A9%AC.assets/20210428132848.png" alt="img" align="left" />
+
+- 读空闲会触发`READER_IDLE`
+- 写空闲会触发`WRITER_IDLE`
+- 读和写空闲会触发`ALL_IDEL`
+
+想要处理这些事件，**需要自定义事件处理函数**
+
+**服务器端代码**
+
+```java
+// 用来判断是不是 读空闲时间过长 或者 写空闲时间过长
+// 5秒内如果没有收到 channel 的数据，会触发一个 IdleState#READER_IDLE 事件
+ch.pipeline().addLast(new IdleStateHandler(5, 0, 0, TimeUnit.SECONDS));
+// ChannelDuplexHandler 可以同时作为 入站 和 出站 处理器
+ch.pipeline().addLast(new ChannelDuplexHandler() {
+    // 用来触发特殊事件
+    @Override
+    public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
+        IdleStateEvent event = (IdleStateEvent) evt;
+        // 触发了读空闲事件
+        if (event.state() == IdleState.READER_IDLE) {
+            log.debug("已经5秒内没有读到数据了");
+            ctx.channel().close(); // 断开连接
+        }
+    }
+});
+```
+
+- 使用`IdleStateHandler`进行空闲检测
+
+- 使用双向处理器
+
+  ```java
+  ChannelDuplexHandler
+  ```
+
+  对入站与出站事件进行处理
+
+  `IdleStateHandler`中的事件为特殊事件，需要实现`ChannelDuplexHandler`的`userEventTriggered`方法，判断事件类型并自定义处理方式，来对事件进行处理
+
+
+
+为**避免因非网络等原因引发的READ_IDLE事件**，比如网络情况良好，只是用户本身没有输入数据，这时发生READ_IDLE事件，**直接让服务器断开连接是不可取的**
+
+为避免此类情况，需要在**客户端向服务器发送心跳包**，发送频率要**小于**服务器设置的`IdleTimeSeconds`，一般设置为其值的一半
+
+**客户端代码**
+
+```java
+// 发送心跳包，让服务器知道客户端在线
+// 3秒内如果没有向服务器写数据，会触发一个 IdleState#WRITER_IDLE 事件
+ch.pipeline().addLast(new IdleStateHandler(0, 3, 0, TimeUnit.SECONDS));
+ch.pipeline().addLast(new ChannelDuplexHandler() {
+    @Override
+    public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
+        IdleStateEvent event = (IdleStateEvent) evt;
+        // 触发了写空闲事件
+        if (event.state() == IdleState.WRITER_IDLE) {
+            // log.debug("3秒没有写数据了，发送一个心跳包");
+            ctx.writeAndFlush(new PingMessage());
+        }
+    }
+});
+```
+
++++
+
+## 四、Netty优化与源码
+
+### 1 优化
+
+#### 1.1 扩展序列化算法
 
 
 
