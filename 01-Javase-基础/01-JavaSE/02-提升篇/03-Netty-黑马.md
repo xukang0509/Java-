@@ -6433,6 +6433,8 @@ public interface GroupSession {
 
 
 
+
+
 - client包：存放客户端相关类
 - message包：存放各种类型的消息
 - protocol包：存放自定义协议
